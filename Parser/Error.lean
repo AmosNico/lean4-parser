@@ -31,17 +31,18 @@ This class declares an error type for a given parser stream.
 Given `Parser.Stream σ τ`, `Parser.Error ε σ τ` provides two basic mechanisms for reporting parsing
 errors:
 
-* `unexpected (p : Stream.Position σ) (t : Option τ) : ε`
-  is used to report an unexpected input at a given position, optionally with the offending token.
-* `addMessage (e : ε) (p : Stream.Position σ) (info : String)`
+* `unexpected (s : σ) (p : Stream.Position σ) (t : Option τ) : ε`
+  is used to report an unexpected input in at a given position in the stream `s`,
+  optionally with the offending token.
+* `addMessage (e : ε) (s : σ) (p : Stream.Position σ) (info : String)`
   is used to add additional error information at a given position.
 
 This class can be extended to provide additional error reporting and processing functonality, but
 only these two mechanisms are used within the library.
 -/
 protected class Parser.Error (ε σ : Type _) (τ : outParam (Type _)) [Parser.Stream σ τ] where
-  unexpected : Stream.Position σ → Option τ → ε
-  addMessage : ε → Stream.Position σ → String → ε
+  unexpected : σ → Stream.Position σ → Option τ → ε
+  addMessage : ε → σ → Stream.Position σ → String → ε
 attribute [inherit_doc Parser.Error] Parser.Error.unexpected Parser.Error.addMessage
 
 namespace Parser.Error
@@ -54,8 +55,8 @@ or where parsing errors are intended to be handled by other means.
 abbrev Trivial := Unit
 
 instance (σ τ) [Parser.Stream σ τ] : Parser.Error Trivial σ τ where
-  unexpected _ _ := ()
-  addMessage e _ _ := e
+  unexpected _ _ _ := ()
+  addMessage e _ _ _ := e
 
 /-- *Basic error type*
 
@@ -66,8 +67,8 @@ parsing errors is predictable and only the position of the error is needed for p
 abbrev Basic (σ τ) [Parser.Stream σ τ] := Stream.Position σ × Option τ
 
 instance (σ τ) [Parser.Stream σ τ] : Parser.Error (Basic σ τ) σ τ where
-  unexpected p t := (p, t)
-  addMessage e _ _ := e
+  unexpected _ p t := (p, t)
+  addMessage e _ _ _ := e
 
 instance (σ τ) [Repr τ] [Parser.Stream σ τ] [Repr (Stream.Position σ)] :
   ToString (Basic σ τ) where
@@ -126,7 +127,7 @@ instance (σ τ) [Repr τ] [Parser.Stream σ τ] [Repr (Parser.Stream.Position �
   toString := Simple.toString
 
 instance (σ τ) [Parser.Stream σ τ] : Parser.Error (Simple σ τ) σ τ where
-  unexpected := Simple.unexpected
-  addMessage := Simple.addMessage
+  unexpected _ := Simple.unexpected
+  addMessage e _ := Simple.addMessage e
 
 end Parser.Error
