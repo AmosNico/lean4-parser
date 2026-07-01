@@ -25,7 +25,7 @@ namespace JSON
 open Parser Char
 
 /-- JSON parser monad -/
-protected abbrev Parser := SimpleParser String.Slice Char
+protected abbrev Parser (s : String.Slice) := SimpleParser s Char s.Pos
 
 /-- Parse JSON white spaces
 
@@ -35,7 +35,7 @@ return (U+000D), horizontal tab (U+0009).
 <ws> ::= "" | U+00020 <ws> | U+000A <ws> | U+000D <ws> | U+0009 <ws>
 ```
 -/
-def ws : JSON.Parser Unit :=
+def ws : JSON.Parser s Unit :=
   dropMany <| tokenFilter [' ', '\n', '\r', '\t'].contains
 
 /-- Parse a JSON number
@@ -45,7 +45,7 @@ Specification:
 <number> ::= <integer> <optional-fraction> <optional-exponent>
 ```
 -/
-protected partial def number : JSON.Parser Unit :=
+protected partial def number : JSON.Parser s Unit :=
   withErrorMessage "expected number" do
     /-
     ```
@@ -111,7 +111,7 @@ Specification:
 <character> ::= "\" <escape> | U+0020 .. U+10FFFF except """" (U+0022) and "\" (U+005C)
 ```
 -/
-protected def string : JSON.Parser Unit :=
+protected def string : JSON.Parser s Unit :=
   withErrorMessage "expected string" do
     char '"' *> dropUntil (drop 1 <| char '"') do
       first [
@@ -129,7 +129,7 @@ where
       | "A" | "B" | "C" | "D" | "E" | "F" | "a" | "b" | "c" | "d" | "e" | "f"
   ```
   -/
-  escape : JSON.Parser Unit :=
+  escape : JSON.Parser s Unit :=
     withErrorMessage "expected escape" do
       first [
         drop 1 <| tokenFilter ['"', '\\', '/', 'b', 'f', 'n', 'r', 't'].contains,
@@ -149,7 +149,7 @@ The `object` and `array` parsers recursively
 depend on `value` so they are in a mutual
 declaration block.
 -/
-protected partial def value : JSON.Parser Unit :=
+protected partial def value : JSON.Parser s Unit :=
   first [
     JSON.object,
     JSON.array,
@@ -172,7 +172,7 @@ Specification:
 <member> ::= <ws> <string> <ws> ":" <ws> <value> <ws>
 ```
 -/
-protected partial def object : JSON.Parser Unit :=
+protected partial def object : JSON.Parser s Unit :=
   withErrorMessage "expected object" do
     drop 1 <| char '{'
     let _ ← sepBy (char ',') do
@@ -192,7 +192,7 @@ Specification:
 <element> ::= <ws> <value> <ws>
 ```
 -/
-protected partial def array : JSON.Parser Unit :=
+protected partial def array : JSON.Parser s Unit :=
   withErrorMessage "expected array" do
     drop 1 <| char '['
     let _ ← sepBy (char ',') do
@@ -204,7 +204,7 @@ end
 
 /-- JSON validator -/
 def validate (str : String) : Bool :=
-  match Parser.run (ws *> JSON.value <* ws <* endOfInput) str.toSlice with
+  match Parser.run (ws *> JSON.value <* ws <* endOfInput) (s := str.toSlice) with
   | .ok _ _ => true
   | .error _ _ => false
 

@@ -35,24 +35,17 @@ Implementations should try to make the `Position` type as lightweight as possibl
 and `setPosition` to work properly. Often `Position` is just a scalar type or another simple type.
 This may allow for parsers to use the stream state more efficiently.
 -/
-protected class Parser.Stream.{u_1} (σ : Type _) (τ : outParam (Type _)) extends Std.Stream σ τ where
-  Position : Type u_1
-  getPosition : σ → Position
-  setPosition : σ → Position → σ
-attribute [reducible, inherit_doc Parser.Stream] Parser.Stream.Position
-attribute [inherit_doc Parser.Stream] Parser.Stream.getPosition Parser.Stream.setPosition
+protected class Parser.Stream {σ : Type _}
+    (s : σ) (τ : outParam (Type _)) (Pos : outParam (Type _)) where
+  start : Pos
+  next? : Pos → Option (τ × Pos)
+attribute [inherit_doc Parser.Stream] Parser.Stream.start Parser.Stream.next?
 
 namespace Parser.Stream
 
 /-- Stream segment type. -/
 @[expose]
-def Segment (σ) [Parser.Stream σ τ] := Stream.Position σ × Stream.Position σ
-
-/-- Start position of stream segment. -/
-abbrev Segment.start [Parser.Stream σ τ] (s : Segment σ) := s.1
-
-/-- Stop position of stream segment. -/
-abbrev Segment.stop [Parser.Stream σ τ] (s : Segment σ) := s.2
+def Segment {τ σ} (s : σ) {Pos} [Parser.Stream s τ Pos] := Pos × Pos
 
 /-- Default wrapper to make a `Parser.Stream` from a plain `Stream`.
 
@@ -63,48 +56,47 @@ prefer tailored `Parser.Stream` instances to this default.
 def mkDefault (σ τ) [Std.Stream σ τ] := σ
 
 @[reducible]
-instance (σ τ) [self : Std.Stream σ τ] : Parser.Stream (mkDefault σ τ) τ where
-  toStream := self
-  Position := σ
-  getPosition s := s
-  setPosition _ p := p
+instance (σ τ) [self : Std.Stream σ τ] (s : σ) : Parser.Stream s τ (mkDefault σ τ) where
+  start := s
+  next? := self.next?
 
 @[reducible]
-instance : Parser.Stream String.Slice Char where
-  Position := String.Pos.Raw
-  getPosition s := s.startInclusive.offset
-  setPosition s p :=
-    if h : p.IsValid s.str then
-      s.str.slice! ⟨p, h⟩ s.endExclusive
+instance {s : String} : Parser.Stream s Char s.Pos where
+  start := s.startPos
+  next? p :=
+   match h : p.next? with
+    | some p' => (p.get (String.Pos.ne_endPos_of_next?_eq_some h), p')
+    | none => none
+
+
+@[reducible]
+instance {s : String.Slice} : Parser.Stream s Char s.Pos where
+  start := s.startPos
+  next? p :=
+   match h : p.next? with
+    | some p' => (p.get (String.Slice.Pos.ne_endPos_of_next?_eq_some h), p')
+    | none => none
+
+-- Substring.Raw is a legacy function, so maybe this should be removed.
+@[reducible]
+instance {s : Substring.Raw} : Parser.Stream s Char String.Pos.Raw where
+  start := s.startPos
+  next? p :=  if s.startPos < s.stopPos then
+      some (s.startPos.get s.str, p.next s.str)
     else
-      panic! "invalid position for string"
+      none
 
 @[reducible]
-instance : Parser.Stream Substring.Raw Char where
-  Position := String.Pos.Raw
-  getPosition s := s.startPos
-  setPosition s p :=
-    if p ≤ s.stopPos then
-      { s with startPos := p }
-    else
-      { s with startPos := s.stopPos }
+instance (τ) {s : Subarray τ} : Parser.Stream s τ Nat where
+  start := s.start
+  next? p := s[p]? >>= (· , p  + 1)
 
 @[reducible]
-instance (τ) : Parser.Stream (Subarray τ) τ where
-  Position := Nat
-  getPosition s := s.start
-  setPosition s p :=
-    if h : p ≤ s.stop then
-      ⟨{ s.internalRepresentation with start := p, start_le_stop := h }⟩
-    else
-      ⟨{ s.internalRepresentation with start := s.stop, start_le_stop := Nat.le_refl s.stop }⟩
+instance {s : ByteSlice} : Parser.Stream s UInt8 Nat where
+  start := s.start
+  next? p := s[p]? >>= (· , p  + 1)
 
-@[reducible]
-instance : Parser.Stream ByteSlice UInt8 where
-  Position := Nat
-  getPosition s := s.start
-  setPosition s p := s.slice p
-
+/-
 /-- `OfList` is a view of a list stream that keeps track of consumed tokens. -/
 structure OfList (τ : Type _) where
   /-- Remaining tokens. -/
@@ -140,6 +132,15 @@ instance (τ) : Parser.Stream (OfList τ) τ where
   next? s :=
     match s with
     | ⟨x :: rest, past⟩ => some (x, ⟨rest, x :: past⟩)
+    | _ => none
+-/
+
+@[reducible]
+instance (τ) (s : List τ) : Parser.Stream s τ (List τ) where
+  start := s
+  next? p :=
+    match p with
+    | x :: rest => some (x, rest)
     | _ => none
 
 end Parser.Stream

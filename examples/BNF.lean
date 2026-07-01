@@ -105,98 +105,98 @@ instance : ToString Syntax :=
 -/
 
 /-- BNF parser monad -/
-abbrev BNFParser := SimpleParser String.Slice Char
+abbrev BNFParser (s : String.Slice) := SimpleParser s Char s.Pos
 
 namespace BNFParser
 open Parser Char
 
 /-- Parser for <eol> -/
-def eol : BNFParser Char :=
+def eol : BNFParser s Char :=
   withErrorMessage "<eol>" do
     Parser.Char.eol
 
 /-- Parser for <spaces>  -/
-def spaces : BNFParser Unit :=
+def spaces : BNFParser s Unit :=
   withErrorMessage "<spaces>" do
     dropMany (char ' ')
 
 /-- Parser for <symbol> -/
-def symbol : BNFParser Char :=
+def symbol : BNFParser s Char :=
   let list := ['|', ' ', '!', '#', '$', '%', '&', '(', ')', '*', '+', ',', '-', '.', '/', ':', ';',
     '>', '=', '<', '?', '@', '[', ']', '^', '_', '`', '{', '}', '~', '\n']
   withErrorMessage "<symbol>" do
     tokenFilter list.elem
 
 /-- Parser for <digit> -/
-def digit : BNFParser Char :=
+def digit : BNFParser s Char :=
   withErrorMessage "<digit>" do
     ASCII.numeric
 
 /-- Parser for <letter> -/
-def letter : BNFParser Char :=
+def letter : BNFParser s Char :=
   withErrorMessage "<letter>" do
     ASCII.alpha
 
 /-- Parser for <character> -/
-def character : BNFParser Char :=
+def character : BNFParser s Char :=
   withErrorMessage "<character>" do
     ASCII.alphanum <|> symbol
 
 /-- Parser for <line-end> -/
-def lineEnd : BNFParser Unit :=
+def lineEnd : BNFParser s Unit :=
   withErrorMessage "<line-end>" do
     dropMany (spaces <* eol)
 
 /-- Parser for <name-character> -/
-def nameCharacter : BNFParser Char :=
+def nameCharacter : BNFParser s Char :=
   withErrorMessage "<name-character>" do
     ASCII.alphanum <|> char '-'
 
 /-- Parser for <name-string> -/
-def nameString : BNFParser String :=
+def nameString : BNFParser s String :=
   withErrorMessage "<name-string>" do
     foldl String.push "" nameCharacter
 
 /-- Parser for <name> -/
-def name : BNFParser String :=
+def name : BNFParser s String :=
   withErrorMessage "<name>" do
     let a ← letter
     let s ← nameString
     return a.toString ++ s
 
 /-- Parser for <text-character> -/
-def textCharacter : BNFParser Char :=
+def textCharacter : BNFParser s Char :=
   withErrorMessage "<text-character>" do
     character <|> char '\'' *> char '\''
 
 /-- Parser for <text> -/
-partial def text : BNFParser String :=
+partial def text : BNFParser s String :=
   withErrorMessage "<text>" do
     foldl String.push "" textCharacter
 
 /-- Parser for <term> -/
-def term : BNFParser Term :=
-  let literal : BNFParser String := char '\'' *> text <* char '\''
-  let rule : BNFParser String := char '<' *> name <* char '>'
+def term : BNFParser s Term :=
+  let literal : BNFParser s String := char '\'' *> text <* char '\''
+  let rule : BNFParser s String := char '<' *> name <* char '>'
   withErrorMessage "<term>" do
     Term.literal <$> literal <|> Term.rule <$> rule
 
 /-- Parser for <expr-cat> -/
-partial def exprCat : BNFParser ExprCat :=
+partial def exprCat : BNFParser s ExprCat :=
   withErrorMessage "<expr-cat>" do
     let expr ← spaces *> term
     ExprCat.cons expr <$> exprCat
       <|> return ExprCat.pure expr
 
 /-- Parser for <expr-alt> -/
-partial def exprAlt : BNFParser ExprAlt :=
+partial def exprAlt : BNFParser s ExprAlt :=
   withErrorMessage "<expr-alt>" <| do
     let expr ← exprCat
     ExprAlt.cons expr <$> (spaces *> char '|' *> exprAlt)
       <|> return ExprAlt.pure expr
 
 /-- Parser for <rule> -/
-def rule : BNFParser (String × ExprAlt) :=
+def rule : BNFParser s (String × ExprAlt) :=
   withErrorMessage "<rule>" do
     let name ← spaces *> char '<' *> name <* char '>'
     let _ ← spaces *> chars "::="
@@ -204,7 +204,7 @@ def rule : BNFParser (String × ExprAlt) :=
     return (name, expr)
 
 /-- Parser for <syntax> -/
-partial def «syntax» : BNFParser Syntax :=
+partial def «syntax» : BNFParser s Syntax :=
   withErrorMessage "<syntax>" do
     let (name, expr) ← withErrorMessage "<syntax>: expected rule" rule
     Syntax.cons name expr <$> «syntax»
@@ -214,7 +214,7 @@ end BNFParser
 
 /-- Parse BNF from string -/
 def parse (input : String) : Except String BNF.Syntax :=
-  match (BNFParser.syntax <* Parser.endOfInput).run input.toSlice with
+  match (BNFParser.syntax <* Parser.endOfInput).run (s := input.toSlice) with
   | .ok _ stx => .ok stx
   | .error _ err => .error ("error: " ++ toString err)
 

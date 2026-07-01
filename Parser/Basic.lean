@@ -12,7 +12,7 @@ public import Parser.Stream
 public section
 
 namespace Parser
-variable [Parser.Stream σ τ] [Parser.Error ε σ τ] [Monad m]
+variable {σ} {s : σ} {τ Pos ε m} [Parser.Stream s τ Pos] [Parser.Error ε s τ Pos] [Monad m]
 
 /-! # Token Functions -/
 
@@ -22,10 +22,10 @@ variable [Parser.Stream σ τ] [Parser.Error ε σ τ] [Monad m]
 This is a low-level parser to customize how the parser stream is used.
 -/
 @[inline]
-def tokenCore (next? : σ → Option (τ × σ)) : ParserT ε σ τ m (ULift τ) := do
-  match next? (← getStream) with
-  | some (tok, stream) =>
-    let _ ← setStream stream
+def tokenCore (next? : Pos → Option (τ × Pos)) : ParserT ε s τ Pos m (ULift τ) := do
+  match next? (← getPosition) with
+  | some (tok, pos) =>
+    let _ ← setPosition pos
     return ⟨tok⟩
   | none => throwUnexpected
 
@@ -34,8 +34,8 @@ def tokenCore (next? : σ → Option (τ × σ)) : ParserT ε σ τ m (ULift τ)
 the unexpected token.
 -/
 @[specialize]
-def tokenMap (test : τ → Option α) : ParserT ε σ τ m α := do
-  let ⟨tok⟩ ← tokenCore Stream.next?
+def tokenMap (test : τ → Option α) : ParserT ε s τ Pos m α := do
+  let ⟨tok⟩ ← tokenCore (Stream.next? s)
   match test tok with
   | some x => return x
   | none => throwUnexpected tok
@@ -44,7 +44,7 @@ def tokenMap (test : τ → Option α) : ParserT ε σ τ m α := do
 `anyToken` consumes and returns one token from the stream. Only fails on end of stream.
 -/
 @[inline]
-def anyToken : ParserT ε σ τ m τ :=
+def anyToken : ParserT ε s τ Pos m τ :=
   tokenMap some
 
 /--
@@ -52,21 +52,21 @@ def anyToken : ParserT ε σ τ m τ :=
 unexpected token.
 -/
 @[inline]
-def tokenFilter (test : τ → Bool) : ParserT ε σ τ m τ :=
+def tokenFilter (test : τ → Bool) : ParserT ε s τ Pos m τ :=
   tokenMap fun c => if test c then some c else none
 
 /--
 `token tk` accepts and returns `tk`, otherwise fails otherwise fails reporting unexpected token.
 -/
 @[inline]
-def token [BEq τ] (tk : τ) : ParserT ε σ τ m τ :=
+def token [BEq τ] (tk : τ) : ParserT ε s τ Pos m τ :=
   tokenFilter (. == tk)
 
 /--
 `tokenArray tks` accepts and returns tokens from `tks` in order, otherwise fails reporting the
 first unexpected token.
 -/
-def tokenArray [BEq τ] (tks : Array τ) : ParserT ε σ τ m (Array τ) :=
+def tokenArray [BEq τ] (tks : Array τ) : ParserT ε s τ Pos m (Array τ) :=
   withBacktracking do
     let mut acc : Array τ := #[]
     for tk in tks do
@@ -77,7 +77,7 @@ def tokenArray [BEq τ] (tks : Array τ) : ParserT ε σ τ m (Array τ) :=
 `tokenArray tks` accepts and returns tokens from `tks` in order, otherwise fails reporting the
 first unexpected token.
 -/
-def tokenList [BEq τ] (tks : List τ) : ParserT ε σ τ m (List τ) :=
+def tokenList [BEq τ] (tks : List τ) : ParserT ε s τ Pos m (List τ) :=
   withBacktracking do
     let mut acc : Array τ := #[]
     for tk in tks do
@@ -90,7 +90,7 @@ def tokenList [BEq τ] (tks : List τ) : ParserT ε σ τ m (List τ) :=
 `lookAhead p` tries to parses `p` without consuming any input. If `p` fails then the stream is
 backtracked with the same error.
 -/
-def lookAhead (p : ParserT ε σ τ m α) : ParserT ε σ τ m α := do
+def lookAhead (p : ParserT ε s τ Pos m α) : ParserT ε s τ Pos m α := do
   let savePos ← getPosition
   try
     let x ← p
@@ -103,13 +103,13 @@ def lookAhead (p : ParserT ε σ τ m α) : ParserT ε σ τ m α := do
 /--
 `peek` returns the next token, without consuming any input. Only fails on end of stream.
 -/
-abbrev peek : ParserT ε σ τ m τ := lookAhead anyToken
+abbrev peek : ParserT ε s τ Pos m τ := lookAhead anyToken
 
 /--
 `notFollowedBy p` succeeds only if `p` fails. Consumes no input regardless of outcome.
 -/
 @[inline]
-def notFollowedBy (p : ParserT ε σ τ m α) : ParserT ε σ τ m PUnit := do
+def notFollowedBy (p : ParserT ε s τ Pos m α) : ParserT ε s τ Pos m PUnit := do
   try
     let _ ← lookAhead p
   catch _ =>
@@ -119,21 +119,21 @@ def notFollowedBy (p : ParserT ε σ τ m α) : ParserT ε σ τ m PUnit := do
 /--
 `endOfInput` succeeds only on end of stream. Consumes no input.
 -/
-abbrev endOfInput : ParserT ε σ τ m PUnit := notFollowedBy anyToken
+abbrev endOfInput : ParserT ε s τ Pos m PUnit := notFollowedBy anyToken
 
 /--
 `test p` returns `true` if `p` succeeds and `false` otherwise. This parser never fails.
 -/
 @[inline]
-def test (p : ParserT ε σ τ m α) : ParserT ε σ τ m Bool :=
+def test (p : ParserT ε s τ Pos m α) : ParserT ε s τ Pos m Bool :=
   optionD (p *> return true) false
 
 /-! ### `foldr` -/
 
 /-- `foldr f p q` -/
 @[inline]
-partial def foldr (f : α → β → β) (p : ParserT ε σ τ m α) (q : ParserT ε σ τ m β) :
-  ParserT ε σ τ m β :=
+partial def foldr (f : α → β → β) (p : ParserT ε s τ Pos m α) (q : ParserT ε s τ Pos m β) :
+  ParserT ε s τ Pos m β :=
   try
     let x ← withBacktracking p
     let y ← foldr f p q
@@ -147,10 +147,10 @@ partial def foldr (f : α → β → β) (p : ParserT ε σ τ m α) (q : Parser
 of `p`.
 -/
 @[inline]
-def take (n : Nat) (p : ParserT ε σ τ m α) : ParserT ε σ τ m (Array α) :=
+def take (n : Nat) (p : ParserT ε s τ Pos m α) : ParserT ε s τ Pos m (Array α) :=
   withBacktracking do rest n #[]
 where
-  rest : Nat → Array α → ParserT ε σ τ m (Array α)
+  rest : Nat → Array α → ParserT ε s τ Pos m (Array α)
     | 0, xs => return xs
     | n+1, xs => do rest n <| xs.push (← p)
 
@@ -159,10 +159,10 @@ where
 of `p`. This parser never fails.
 -/
 @[inline]
-def takeUpTo (n : Nat) (p : ParserT ε σ τ m α) : ParserT ε σ τ m (Array α) :=
+def takeUpTo (n : Nat) (p : ParserT ε s τ Pos m α) : ParserT ε s τ Pos m (Array α) :=
   rest n #[]
 where
-  rest : Nat → Array α → ParserT ε σ τ m (Array α)
+  rest : Nat → Array α → ParserT ε s τ Pos m (Array α)
     | 0, xs => return xs
     | n+1, xs => do
       match ← option? p with
@@ -174,14 +174,14 @@ where
 returned values of `p`. This parser never fails.
 -/
 @[inline]
-def takeMany (p : ParserT ε σ τ m α) : ParserT ε σ τ m (Array α) :=
+def takeMany (p : ParserT ε s τ Pos m α) : ParserT ε s τ Pos m (Array α) :=
   foldl Array.push #[] p
 
 /--
 `takeMany1 p` parses one or more occurrences of `p` until it fails, and returns the array of
 returned values of `p`. Consumes no input on error. -/
 @[inline]
-def takeMany1 (p : ParserT ε σ τ m α) : ParserT ε σ τ m (Array α) :=
+def takeMany1 (p : ParserT ε s τ Pos m α) : ParserT ε s τ Pos m (Array α) :=
   withBacktracking do foldl Array.push #[(← p)] p
 
 /--
@@ -189,7 +189,7 @@ def takeMany1 (p : ParserT ε σ τ m α) : ParserT ε σ τ m (Array α) :=
 returned values of `p`. Consumes no input on error.
 -/
 @[inline]
-def takeManyN (n : Nat) (p : ParserT ε σ τ m α) : ParserT ε σ τ m (Array α) :=
+def takeManyN (n : Nat) (p : ParserT ε s τ Pos m α) : ParserT ε s τ Pos m (Array α) :=
   withBacktracking do foldl Array.push (← take n p) p
 
 /--
@@ -197,12 +197,12 @@ def takeManyN (n : Nat) (p : ParserT ε σ τ m α) : ParserT ε σ τ m (Array 
 array of returned values of `p` and the output of `stop`. If `p` fails before `stop` is encountered,
 the error from `p` is reported and no input is consumed.
 -/
-partial def takeUntil (stop : ParserT ε σ τ m β) (p : ParserT ε σ τ m α) :
-  ParserT ε σ τ m (Array α × β) :=
+partial def takeUntil (stop : ParserT ε s τ Pos m β) (p : ParserT ε s τ Pos m α) :
+  ParserT ε s τ Pos m (Array α × β) :=
   have := Inhabited.mk do return ((#[] : Array α), (← stop))
   withBacktracking do rest #[]
 where
-  rest [Inhabited (ParserT ε σ τ m (Array α × β))] (acc : Array α) := do
+  rest [Inhabited (ParserT ε s τ Pos m (Array α × β))] (acc : Array α) := do
     match ← option? stop with
     | some y => return (acc, y)
     | none => rest <| acc.push (← p)
@@ -213,7 +213,7 @@ where
 `drop n p` parses exactly `n` occurrences of `p` (without backtracking), ignoring all outputs.
 -/
 @[inline]
-def drop (n : Nat) (p : ParserT ε σ τ m α) : ParserT ε σ τ m PUnit :=
+def drop (n : Nat) (p : ParserT ε s τ Pos m α) : ParserT ε s τ Pos m PUnit :=
   match n with
   | 0 => return
   | n+1 => p *> drop n p
@@ -223,7 +223,7 @@ def drop (n : Nat) (p : ParserT ε σ τ m α) : ParserT ε σ τ m PUnit :=
 parser never fails.
 -/
 @[inline]
-def dropUpTo (n : Nat) (p : ParserT ε σ τ m α) : ParserT ε σ τ m PUnit :=
+def dropUpTo (n : Nat) (p : ParserT ε s τ Pos m α) : ParserT ε s τ Pos m PUnit :=
   match n with
   | 0 => return
   | n+1 => do
@@ -236,7 +236,7 @@ def dropUpTo (n : Nat) (p : ParserT ε σ τ m α) : ParserT ε σ τ m PUnit :=
 all outputs.
 -/
 @[inline]
-def dropMany (p : ParserT ε σ τ m α) : ParserT ε σ τ m PUnit :=
+def dropMany (p : ParserT ε s τ Pos m α) : ParserT ε s τ Pos m PUnit :=
   foldl (Function.const α) .unit p
 
 /--
@@ -244,14 +244,14 @@ def dropMany (p : ParserT ε σ τ m α) : ParserT ε σ τ m PUnit :=
 all outputs.
 -/
 @[inline]
-def dropMany1 (p : ParserT ε σ τ m α) : ParserT ε σ τ m PUnit :=
+def dropMany1 (p : ParserT ε s τ Pos m α) : ParserT ε s τ Pos m PUnit :=
   withBacktracking p *> foldl (Function.const α) () p
 
 /--
 `dropManyN n p` parses `n` or more occurrences of `p` until it fails, ignoring all outputs.
 -/
 @[inline]
-def dropManyN (n : Nat) (p : ParserT ε σ τ m α) : ParserT ε σ τ m PUnit :=
+def dropManyN (n : Nat) (p : ParserT ε s τ Pos m α) : ParserT ε s τ Pos m PUnit :=
   withBacktracking do drop n p *> foldl (Function.const α) () p
 
 /--
@@ -259,7 +259,7 @@ def dropManyN (n : Nat) (p : ParserT ε σ τ m α) : ParserT ε σ τ m PUnit :
 outputs from `p`. If `p` fails before encountering `stop` then the error from  `p` is reported
 and no input is consumed.
 -/
-partial def dropUntil (stop : ParserT ε σ τ m β) (p : ParserT ε σ τ m α) : ParserT ε σ τ m β :=
+partial def dropUntil (stop : ParserT ε s τ Pos m β) (p : ParserT ε s τ Pos m α) : ParserT ε s τ Pos m β :=
   withBacktracking loop
 where
   loop := do
@@ -274,7 +274,7 @@ where
 successes.
 -/
 @[inline]
-partial def count (p : ParserT ε σ τ m α) : ParserT ε σ τ m Nat :=
+partial def count (p : ParserT ε s τ Pos m α) : ParserT ε s τ Pos m Nat :=
   foldl (fun n _ => n+1) 0 p
 
 /--
@@ -282,10 +282,10 @@ partial def count (p : ParserT ε σ τ m α) : ParserT ε σ τ m Nat :=
 successes. This parser never fails.
 -/
 @[inline]
-def countUpTo (n : Nat) (p : ParserT ε σ τ m α) : ParserT ε σ τ m Nat :=
+def countUpTo (n : Nat) (p : ParserT ε s τ Pos m α) : ParserT ε s τ Pos m Nat :=
   loop n 0
 where
-  loop : Nat → Nat → ParserT ε σ τ m Nat
+  loop : Nat → Nat → ParserT ε s τ Pos m Nat
     | 0, ct => return ct
     | n+1, ct => do
       match ← option? p with
@@ -297,12 +297,12 @@ where
 the count of successes and the output of `stop`. If `p` fails before encountering `stop` then the
 error from  `p` is reported and no input is consumed.
 -/
-partial def countUntil (stop : ParserT ε σ τ m β) (p : ParserT ε σ τ m α) :
-  ParserT ε σ τ m (Nat × β) := do
+partial def countUntil (stop : ParserT ε s τ Pos m β) (p : ParserT ε s τ Pos m α) :
+  ParserT ε s τ Pos m (Nat × β) := do
   let _ := Inhabited.mk do return (0, ← stop)
   withBacktracking do loop 0
 where
-  loop [Inhabited (ParserT ε σ τ m (Nat × β))] (ct : Nat) := do
+  loop [Inhabited (ParserT ε s τ Pos m (Nat × β))] (ct : Nat) := do
     match ← option? stop with
     | some s => return (ct, s)
     | none => p *> loop (ct+1)
@@ -310,8 +310,8 @@ where
 /-! ### `endBy` family -/
 
 @[specialize]
-private def endByCore (sep : ParserT ε σ τ m β) (p : ParserT ε σ τ m α) (init : Array α) (strict : Bool := false) :
-  ParserT ε σ τ m (Array α) := do
+private def endByCore (sep : ParserT ε s τ Pos m β) (p : ParserT ε s τ Pos m α) (init : Array α) (strict : Bool := false) :
+  ParserT ε s τ Pos m (Array α) := do
   match ← efoldlP (fun xs x => sep *> pure (xs.push x)) init p with
   | (xs, e, true) => if strict then throw e else return xs
   | (xs, _, _) => return xs
@@ -329,8 +329,8 @@ The optional `strict` parameter controls error reporting:
 No input is consumed on error.
 -/
 @[inline]
-def endBy (sep : ParserT ε σ τ m β) (p : ParserT ε σ τ m α) (strict : Bool := false) :
-  ParserT ε σ τ m (Array α) := withBacktracking do endByCore sep p #[] strict
+def endBy (sep : ParserT ε s τ Pos m β) (p : ParserT ε s τ Pos m α) (strict : Bool := false) :
+  ParserT ε s τ Pos m (Array α) := withBacktracking do endByCore sep p #[] strict
 
 /--
 `endBy1 p sep` parses one or more occurrences of `p`, separated and ended by `sep`, returns
@@ -345,14 +345,14 @@ The optional `strict` parameter controls error reporting after parsing the initi
 No input is consumed on error.
 -/
 @[inline]
-def endBy1 (sep : ParserT ε σ τ m β) (p : ParserT ε σ τ m α) (strict : Bool := False) :
-  ParserT ε σ τ m (Array α) := withBacktracking do endByCore sep p #[← p <* sep] strict
+def endBy1 (sep : ParserT ε s τ Pos m β) (p : ParserT ε s τ Pos m α) (strict : Bool := False) :
+  ParserT ε s τ Pos m (Array α) := withBacktracking do endByCore sep p #[← p <* sep] strict
 
 /-! ### `sepBy` family -/
 
 @[specialize]
-private def sepByCore (sep : ParserT ε σ τ m β) (p : ParserT ε σ τ m α) (init : Array α) (strict : Bool := false) :
-  ParserT ε σ τ m (Array α) := do
+private def sepByCore (sep : ParserT ε s τ Pos m β) (p : ParserT ε s τ Pos m α) (init : Array α) (strict : Bool := false) :
+  ParserT ε s τ Pos m (Array α) := do
   match ← efoldlP (fun xs _ => p >>= fun x => pure (xs.push x)) init sep with
   | (xs, e, true) => if strict then throw e else return xs
   | (xs, _, _) => return xs
@@ -370,8 +370,8 @@ The optional `strict` parameter controls error reporting:
 No input is consumed on error.
 -/
 @[inline]
-def sepBy (sep : ParserT ε σ τ m β) (p : ParserT ε σ τ m α) (strict : Bool := false) :
-  ParserT ε σ τ m (Array α) := withBacktracking do
+def sepBy (sep : ParserT ε s τ Pos m β) (p : ParserT ε s τ Pos m α) (strict : Bool := false) :
+  ParserT ε s τ Pos m (Array α) := withBacktracking do
   match ← option? p with
   | some x => sepByCore sep p #[x] strict
   | none => return #[]
@@ -389,15 +389,15 @@ The optional `strict` parameter controls error reporting after parsing the initi
 No input is consumed on error.
 -/
 @[inline]
-def sepBy1 (sep : ParserT ε σ τ m β) (p : ParserT ε σ τ m α) (strict : Bool := false) :
-  ParserT ε σ τ m (Array α) := withBacktracking do sepByCore sep p #[← p] strict
+def sepBy1 (sep : ParserT ε s τ Pos m β) (p : ParserT ε s τ Pos m α) (strict : Bool := false) :
+  ParserT ε s τ Pos m (Array α) := withBacktracking do sepByCore sep p #[← p] strict
 
 /--
 `sepNoEndBy p sep` parses zero or more occurrences of `p`, separated `sep` but without a trailing
 `sep`, returns the array of values returned by `p`.
 -/
 @[inline]
-def sepNoEndBy (sep : ParserT ε σ τ m β) (p : ParserT ε σ τ m α) : ParserT ε σ τ m (Array α) :=
+def sepNoEndBy (sep : ParserT ε s τ Pos m β) (p : ParserT ε s τ Pos m α) : ParserT ε s τ Pos m (Array α) :=
   sepBy sep p true
 
 /--
@@ -405,14 +405,14 @@ def sepNoEndBy (sep : ParserT ε σ τ m β) (p : ParserT ε σ τ m α) : Parse
 `sep`, returns the array of values returned by `p`.
 -/
 @[inline]
-def sepNoEndBy1 (sep : ParserT ε σ τ m β) (p : ParserT ε σ τ m α) : ParserT ε σ τ m (Array α) :=
+def sepNoEndBy1 (sep : ParserT ε s τ Pos m β) (p : ParserT ε s τ Pos m α) : ParserT ε s τ Pos m (Array α) :=
   sepBy1 sep p true
 
 /--
 `sepEndBy p sep` parses zero or more occurrences of `p`, separated by `sep` with an optional
 trailing `sep`, returns the array of values returned by `p`. This parser never fails. -/
 @[inline]
-def sepEndBy (sep : ParserT ε σ τ m β) (p : ParserT ε σ τ m α) : ParserT ε σ τ m (Array α) :=
+def sepEndBy (sep : ParserT ε s τ Pos m β) (p : ParserT ε s τ Pos m α) : ParserT ε s τ Pos m (Array α) :=
   sepBy sep p <* optional sep
 
 /--
@@ -420,7 +420,7 @@ def sepEndBy (sep : ParserT ε σ τ m β) (p : ParserT ε σ τ m α) : ParserT
 trailing `sep`, returns the array of values returned by `p`. This parser never fails.
 -/
 @[inline]
-def sepEndBy1 (sep : ParserT ε σ τ m β) (p : ParserT ε σ τ m α) : ParserT ε σ τ m (Array α) :=
+def sepEndBy1 (sep : ParserT ε s τ Pos m β) (p : ParserT ε s τ Pos m α) : ParserT ε s τ Pos m (Array α) :=
   sepBy1 sep p <* optional sep
 
 end Parser

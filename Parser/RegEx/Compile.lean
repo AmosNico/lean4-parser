@@ -45,11 +45,11 @@ public section
 namespace Parser.RegEx
 open Char
 
-private abbrev REParser := TrivialParser Substring.Raw Char
+private abbrev REParser (s : String.Slice) := TrivialParser s Char s.Pos
 
 mutual
 
-private partial def re0 : REParser (RegEx Char) :=
+private partial def re0 : REParser s (RegEx Char) :=
   re1 >>= loop
 where
 
@@ -59,7 +59,7 @@ where
     else
       return e
 
-private partial def re1 : REParser (RegEx Char) := do
+private partial def re1 : REParser s (RegEx Char) := do
   re2 >>= loop <|> return .nil
 where
 
@@ -68,7 +68,7 @@ where
     | some a => loop (.cat e a)
     | none => return e
 
-private partial def re2 : REParser (RegEx Char) :=
+private partial def re2 : REParser s (RegEx Char) :=
   re3 >>= loop
 where
 
@@ -86,7 +86,7 @@ where
   plus (e : RegEx Char) := do
     char '+' *> return .repMany1 e
 
-  reps (e : RegEx Char) : REParser (RegEx Char) :=
+  reps (e : RegEx Char) : REParser s (RegEx Char) :=
     withBacktracking do
       let _ ← char '{'
       let e ←
@@ -103,14 +103,14 @@ where
       let _ ← char '}'
       return e
 
-private partial def re3 : REParser (RegEx Char) := do
+private partial def re3 : REParser s (RegEx Char) := do
   first [tok, any, set, grp]
 where
 
-  any : REParser (RegEx Char) :=
+  any : REParser s (RegEx Char) :=
     char '.' *> return .any
 
-  grp : REParser (RegEx Char) :=
+  grp : REParser s (RegEx Char) :=
     withBacktracking do
       let _ ← char '('
       let n ← test (char '?' *> char ':')
@@ -118,7 +118,7 @@ where
       let _ ← char ')'
       return if n then e else .group e
 
-  setLoop (filter : Char → Bool) : REParser (Char → Bool) := do
+  setLoop (filter : Char → Bool) : REParser s (Char → Bool) := do
     match ← option? <| tokenFilter (!['-', '[', ']'].elem .) with
     | some c =>
       let c ← if c == '\\' then esc else pure c
@@ -132,7 +132,7 @@ where
       setLoop fun x => filter x || f x
     | none => return filter
 
-  set : REParser (RegEx Char) :=
+  set : REParser s (RegEx Char) :=
     withBacktracking do
       let _ ← char '['
       let n ← test (char '^')
@@ -143,13 +143,13 @@ where
       else
         return .set (f .)
 
-  tok : REParser (RegEx Char) := do
+  tok : REParser s (RegEx Char) := do
     let special := ['.', '?', '*', '+', '|', '(', ')', '{', '}', '[', ']']
     let c ← tokenFilter (!special.elem .)
     let c ← if c == '\\' then esc else pure c
     return .set (. == c)
 
-  esc : REParser Char := do
+  esc : REParser s Char := do
     match ← anyToken with
     | 't' => return '\t'
     | 'n' => return '\n'
@@ -170,7 +170,7 @@ end
 
 /-- Compiles a regex from a string, returns `none` on faiure -/
 protected def compile? (s : String) : Option (RegEx Char) :=
-  match Parser.run (re0 <* endOfInput) s with
+  match Parser.run (re0 (s := s) <* endOfInput) with
   | .ok _ r => some r
   | .error _ _ => none
 

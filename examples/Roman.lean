@@ -28,21 +28,21 @@ namespace Roman
 open Parser Char
 
 /-- Roman parser monad -/
-protected abbrev Parser := Parser Unit String.Slice Char
+protected abbrev Parser (s : String.Slice):= Parser Unit s Char s.Pos
 
 /-- Parse a roman numeral (uppercase) -/
-protected def parse : Roman.Parser Nat :=
+protected def parse : Roman.Parser s Nat :=
   stepM >>= stepC >>= stepX >>= stepI
 
 where
 
   /-- Parse thousands (up to 3000) -/
-  stepM : Roman.Parser Nat :=
+  stepM : Roman.Parser s Nat :=
     -- 0, M = 1000, MM = 2000, MMM = 3000
     (1000 * .) <$> countUpTo 3 (char 'M')
 
   /-- Parse hundreds and add to `n` -/
-  stepC (n : Nat) : Roman.Parser Nat :=
+  stepC (n : Nat) : Roman.Parser s Nat :=
     first [
       -- CM = 900
       char 'C' *> char 'M' *> pure (n + 900),
@@ -54,7 +54,7 @@ where
       (n + 100 * .) <$> countUpTo 3 (char 'C')]
 
   /-- Parse tens and add to `n` -/
-  stepX (n : Nat) : Roman.Parser Nat :=
+  stepX (n : Nat) : Roman.Parser s Nat :=
     first [
       -- XC = 90
       char 'X' *> char 'C' *> pure (n + 90),
@@ -66,7 +66,7 @@ where
       (n + 10 * .) <$> countUpTo 3 (char 'X')]
 
   /-- Parse units and add to `n` -/
-  stepI (n : Nat) : Roman.Parser Nat :=
+  stepI (n : Nat) : Roman.Parser s Nat :=
     first [
       -- IX = 9
       char 'I' *> char 'X' *> pure (n + 9),
@@ -82,7 +82,7 @@ end Roman
 /-- Interpret the string as a roman numeral -/
 def String.toNatRoman? (s : String) (upper : Bool := true) : Option Nat :=
   let s := if upper then s else s.map .toUpper
-  match Parser.run (Roman.parse <* Parser.endOfInput) s.toSlice with
+  match Parser.run (Roman.parse <* Parser.endOfInput) (s := s.toSlice) with
   | .ok _ (n+1) => some (n+1)
   | _ => none
 
