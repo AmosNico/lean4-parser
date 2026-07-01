@@ -68,7 +68,7 @@ def repManyN (n : Nat) (e : RegEx α) :=
   | n+1 => cat e (repManyN n e)
 
 section
-variable {ε σ α β} [Parser.Stream σ α] [Parser.Error ε σ α] {m} [Monad m]
+variable {ε σ α β} [Std.Stream σ α] [Parser.Error ε σ α] {m} [Monad m]
 
 /-- Fold over a regex match from the right -/
 protected partial def foldr (f : α → β → β) : RegEx α → ParserT ε σ α m β → ParserT ε σ α m β
@@ -106,9 +106,9 @@ where
     | .group e, lvl, ms => do
       let mut ms := ms
       for i in [lvl:ms.size] do ms := ms.set! i none
-      let start ← Parser.getPosition
+      let start ← Parser.getStream
       ms ← loop e (lvl+1) ms
-      let stop ← Parser.getPosition
+      let stop ← Parser.getStream
       return ms.set! lvl (some (start, stop))
 
 end

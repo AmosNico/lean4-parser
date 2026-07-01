@@ -5,14 +5,12 @@ Released under Apache 2.0 license as described in the file LICENSE.
 module
 
 import Parser.Prelude
-public import Parser.Error
 public import Parser.Parser
-public import Parser.Stream
 
 public section
 
 namespace Parser
-variable [Parser.Stream σ τ] [Parser.Error ε σ τ] [Monad m]
+variable [Std.Stream σ τ] [Parser.Error ε σ τ] [Monad m]
 
 /-! # Token Functions -/
 
@@ -91,13 +89,13 @@ def tokenList [BEq τ] (tks : List τ) : ParserT ε σ τ m (List τ) :=
 backtracked with the same error.
 -/
 def lookAhead (p : ParserT ε σ τ m α) : ParserT ε σ τ m α := do
-  let savePos ← getPosition
+  let save ← getStream
   try
     let x ← p
-    setPosition savePos
+    setStream save
     return x
   catch e =>
-    setPosition savePos
+    setStream save
     throw e
 
 /--

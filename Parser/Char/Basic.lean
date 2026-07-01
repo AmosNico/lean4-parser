@@ -10,7 +10,7 @@ public import Parser.RegEx.Basic
 public section
 
 namespace Parser.Char
-variable {ε σ m} [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
+variable {ε σ m} [Std.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
 
 /-- `char tk` accepts and returns character `tk`, otherwise fails -/
 @[inline]
@@ -30,7 +30,7 @@ def string [Parser.Error ε Substring.Raw Char] (tks : String) : ParserT ε Subs
   withErrorMessage s!"expected {repr tks}" do
     let ⟨str, start, stop⟩ ← getStream
     if start.offsetBy tks.rawEndPos ≤ stop ∧ String.Pos.Raw.substrEq tks 0 str start tks.rawEndPos.byteIdx then
-      setPosition (start.offsetBy tks.rawEndPos)
+      setStream ⟨str, start.offsetBy tks.rawEndPos, stop⟩
       return tks
     else
       throwUnexpected
@@ -40,7 +40,34 @@ def captureStr [Parser.Error ε Substring.Raw Char] (p : ParserT ε Substring.Ra
   ParserT ε Substring.Raw Char m (α × Substring.Raw) := do
   let ⟨str,_,_⟩ ← getStream
   let (x, start, stop) ← withCapture p
-  return (x, ⟨str, start, stop⟩)
+  return (x, ⟨str, start.startPos, stop.startPos⟩)
+
+/-- `matchStr re` accepts and returns substring matches for regex `re` groups, otherwise fails -/
+def matchStr [Parser.Error ε Substring.Raw Char] (re : RegEx Char) :
+  ParserT ε Substring.Raw Char m (Array (Option Substring.Raw)) := do
+  let ⟨str,_,_⟩ ← getStream
+  let ms ← re.match
+  return ms.map fun
+    | some (start, stop) => some ⟨str, start.startPos, stop.startPos⟩
+    | none => none
+
+/-
+/-- `string tks` accepts and returns string `tks`, otherwise fails -/
+def string [Parser.Error ε String.Slice Char] (tks : String) : ParserT ε String.Slice Char m String :=
+  withErrorMessage s!"expected {repr tks}" do
+    match (← getStream).dropPrefix? tks with
+    | some s =>
+      setStream s
+      return tks
+    | none =>
+      throwUnexpected
+
+/-- `captureStr p` parses `p` and returns the output of `p` with the corresponding Substring.Raw -/
+def captureStr [Parser.Error ε String.Slice Char] (p : ParserT ε String.Slice Char m α) :
+  ParserT ε String.Slice Char m (α × String.Slice) := do
+  let ⟨str,_,_, _⟩ ← getStream
+  let (x, start, stop) ← withCapture p
+  return (x, ⟨str, start.startPos, stop, by sorry⟩)
 
 /-- `matchStr re` accepts and returns substring matches for regex `re` groups, otherwise fails -/
 def matchStr [Parser.Error ε Substring.Raw Char] (re : RegEx Char) :
@@ -50,6 +77,7 @@ def matchStr [Parser.Error ε Substring.Raw Char] (re : RegEx Char) :
   return ms.map fun
     | some (start, stop) => some ⟨str, start, stop⟩
     | none => none
+-/
 
 /-- Parse space (U+0020) -/
 @[inline]

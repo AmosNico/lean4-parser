@@ -9,7 +9,7 @@ public import Parser.Char.Basic
 public section
 
 namespace Parser.Char.Unicode
-variable {ε σ m} [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
+variable {ε σ m} [Std.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
 
 /-- parse alphabetic letter character -/
 def alpha : ParserT ε σ Char m Char :=

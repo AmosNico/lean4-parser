@@ -9,7 +9,7 @@ public import Parser.Char.Basic
 
 public section
 namespace Parser.Char.ASCII
-variable {ε σ m} [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
+variable {ε σ m} [Std.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
 
 @[inline]
 private def decNum (n : Nat := 0) : ParserT ε σ Char m (Nat × Nat) :=

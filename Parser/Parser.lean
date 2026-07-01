@@ -23,15 +23,15 @@ protected inductive Parser.Result.{u} (ε σ α : Type u) : Type u
 error type `ε`.
 -/
 @[expose]
-def ParserT (ε σ τ : Type _) [Parser.Stream σ τ] [Parser.Error ε σ τ] (m : Type _ → Type _)
+def ParserT (ε σ τ : Type _) [Std.Stream σ τ] [Parser.Error ε σ τ] (m : Type _ → Type _)
   (α : Type _) : Type _ := σ → m (Parser.Result ε σ α)
 
 /-- Run the monadic parser `p` on input stream `s`. -/
 @[inline]
-def ParserT.run [Parser.Stream σ τ] [Parser.Error ε σ τ] (p : ParserT ε σ τ m α) (s : σ) :
+def ParserT.run [Std.Stream σ τ] [Parser.Error ε σ τ] (p : ParserT ε σ τ m α) (s : σ) :
   m (Parser.Result ε σ α) := p s
 
-instance (σ ε τ m) [Parser.Stream σ τ] [Parser.Error ε σ τ] [Monad m] :
+instance (σ ε τ m) [Std.Stream σ τ] [Parser.Error ε σ τ] [Monad m] :
   Monad (ParserT ε σ τ m) where
   pure x s := return .ok s x
   bind x f s := x s >>= fun
@@ -56,71 +56,70 @@ instance (σ ε τ m) [Parser.Stream σ τ] [Parser.Error ε σ τ] [Monad m] :
       | .error s e => return .error s e
     | .error s e => return .error s e
 
-instance (σ ε τ m) [Parser.Stream σ τ] [Parser.Error ε σ τ] [Monad m] :
+instance (σ ε τ m) [Std.Stream σ τ] [Parser.Error ε σ τ] [Monad m] :
   MonadExceptOf ε (ParserT ε σ τ m) where
   throw e s := return .error s e
   tryCatch p c s := p s >>= fun
     | .ok s v => return .ok s v
     | .error s e => (c e).run s
 
-instance (σ ε τ m) [Parser.Stream σ τ] [Parser.Error ε σ τ] [Monad m] :
+instance (σ ε τ m) [Std.Stream σ τ] [Parser.Error ε σ τ] [Monad m] :
   OrElse (ParserT ε σ τ m α) where
   orElse p q s :=
-    let savePos := Parser.Stream.getPosition s
     p s >>= fun
-    | .ok s v => return .ok s v
-    | .error s _ => q () (Parser.Stream.setPosition s savePos)
+    | .ok s' v => return .ok s' v
+    | .error _ _ => q () s
 
-instance (σ ε τ m) [Parser.Stream σ τ] [Parser.Error ε σ τ] [Monad m] :
+instance (σ ε τ m) [Std.Stream σ τ] [Parser.Error ε σ τ] [Monad m] :
   MonadLift m (ParserT ε σ τ m) where
   monadLift x s := (.ok s ·) <$> x
 
 /--
 `Parser ε σ τ` monad to parse tokens of type `τ` from the stream type `σ` with error type `ε`.
 -/
-abbrev Parser (ε σ τ) [Parser.Stream σ τ] [Parser.Error ε σ τ] := ParserT ε σ τ Id
+abbrev Parser (ε σ τ) [Std.Stream σ τ] [Parser.Error ε σ τ] := ParserT ε σ τ Id
 
 /-- Run parser `p` on input stream `s`. -/
 @[inline]
-protected def Parser.run {ε σ τ α} [Parser.Stream σ τ] [Parser.Error ε σ τ] (p : Parser ε σ τ α)
+protected def Parser.run {ε σ τ α} [Std.Stream σ τ] [Parser.Error ε σ τ] (p : Parser ε σ τ α)
   (s : σ) : Parser.Result ε σ α := p s
 
 /--
 `TrivialParserT σ τ` monad transformer to parse tokens of type `τ` from the stream `σ` with trivial
 error handling.
 -/
-abbrev TrivialParserT (σ τ) [Parser.Stream σ τ] (m) := ParserT Parser.Error.Trivial σ τ m
+abbrev TrivialParserT (σ τ) [Std.Stream σ τ] (m) := ParserT Parser.Error.Trivial σ τ m
 
 /--
 `TrivialParser σ τ` monad to parse tokens of type `τ` from the stream `σ` with trivial error
 handling.
 -/
-abbrev TrivialParser (σ τ) [Parser.Stream σ τ] := Parser Parser.Error.Trivial σ τ
+abbrev TrivialParser (σ τ) [Std.Stream σ τ] := Parser Parser.Error.Trivial σ τ
 
 /--
 `BasicParserT σ τ` monad transformer to parse tokens of type `τ` from the stream `σ` with basic
 error handling.
 -/
-abbrev BasicParserT (σ τ) [Parser.Stream σ τ] (m) := ParserT (Parser.Error.Basic σ τ) σ τ m
+abbrev BasicParserT (σ τ) [Std.Stream σ τ] (m) := ParserT (Parser.Error.Basic σ τ) σ τ m
 
 /--
 `BasicParser σ τ` monad to parse tokens of type `τ` from the stream `σ` with basic error handling.
 -/
-abbrev BasicParser (σ τ) [Parser.Stream σ τ] := Parser (Parser.Error.Basic σ τ) σ τ
+abbrev BasicParser (σ τ) [Std.Stream σ τ] := Parser (Parser.Error.Basic σ τ) σ τ
 
 /--
 `SimpleParserT σ τ` monad transformer to parse tokens of type `τ` from the stream `σ` with simple
 error handling.
 -/
-abbrev SimpleParserT (σ τ) [Parser.Stream σ τ] (m) := ParserT (Parser.Error.Simple σ τ) σ τ m
+abbrev SimpleParserT (σ τ) [Std.Stream σ τ] (m) := ParserT (Parser.Error.Simple σ τ) σ τ m
 
 /--
 `SimpleParser σ τ` monad to parse tokens of type `τ` from the stream `σ` with simple error handling.
 -/
-abbrev SimpleParser (σ τ) [Parser.Stream σ τ] := Parser (Parser.Error.Simple σ τ) σ τ
+abbrev SimpleParser (σ τ) [Std.Stream σ τ] := Parser (Parser.Error.Simple σ τ) σ τ
 
 namespace Parser
-variable {ε σ α β : Type u} [Parser.Stream σ τ] [Parser.Error ε σ τ] [Monad m] [MonadExceptOf ε m]
+variable {ε σ α β : Type u} [Std.Stream σ τ] [Parser.Error ε σ τ] [Monad m] [MonadExceptOf ε m]
 
 /-! # Stream Functions -/
 
@@ -134,51 +133,41 @@ def getStream : ParserT ε σ τ m σ :=
 def setStream (s : σ) : ParserT ε σ τ m PUnit :=
   fun _ => return .ok s PUnit.unit
 
-/-- Get stream position from parser. -/
-@[inline]
-def getPosition : ParserT ε σ τ m (Stream.Position σ) :=
-  Stream.getPosition <$> getStream
-
-/-- Set stream position from parser. -/
-@[inline]
-def setPosition (pos : Stream.Position σ) : ParserT ε σ τ m PUnit := do
-  setStream <| Stream.setPosition (← getStream) pos
-
 /-- `withBacktracking p` parses `p` but does not consume any input on error. -/
 @[inline]
 def withBacktracking (p : ParserT ε σ τ m α) : ParserT ε σ τ m α := do
-  let savePos ← getPosition
+  let s ← getStream
   try p
   catch e =>
-    setPosition savePos
+    setStream s
     throw e
 
 /--
 `withCapture p` parses `p` and returns the output of `p` with the corresponding stream segment.
 -/
-def withCapture {ε σ α : Type _} [Parser.Stream σ τ] [Parser.Error ε σ τ] (p : ParserT ε σ τ m α) :
+def withCapture {ε σ α : Type _} [Std.Stream σ τ] [Parser.Error ε σ τ] (p : ParserT ε σ τ m α) :
   ParserT ε σ τ m (α × Stream.Segment σ) := do
-  let startPos ← getPosition
+  let start ← getStream
   let x ← p
-  let stopPos ← getPosition
-  return (x, startPos, stopPos)
+  let stop ← getStream
+  return (x, start, stop)
 
 /-! # Error Functions -/
 
 /-- Throw error on unexpected token. -/
 @[inline]
 def throwUnexpected (input : Option τ := none) : ParserT ε σ τ m α := do
-  throw (Error.unexpected (← getPosition) input)
+  throw (Error.unexpected (← getStream) input)
 
 /-- Throw error with additional message. -/
 @[inline]
 def throwErrorWithMessage (e : ε) (msg : String) : ParserT ε σ τ m α := do
-  throw (Error.addMessage e (← getPosition) msg)
+  throw (Error.addMessage e (← getStream) msg)
 
 /-- Throw error on unexpected token with error message. -/
 @[inline]
 def throwUnexpectedWithMessage (input : Option τ := none) (msg : String) : ParserT ε σ τ m α := do
-  throwErrorWithMessage (Error.unexpected (← getPosition) input) msg
+  throwErrorWithMessage (Error.unexpected (← getStream) input) msg
 
 /-- Add message on parser error. -/
 @[inline]
@@ -193,12 +182,11 @@ def withErrorMessage (msg : String) (p : ParserT ε σ τ m α) : ParserT ε σ 
 private partial def efoldlPAux [Inhabited ε] [Inhabited σ] [Inhabited β]
   (f : β → α → ParserT ε σ τ m β) (p : ParserT ε σ τ m α) (y : β) (s : σ) :
   m (Parser.Result ε σ (β × ε × Bool)) :=
-  let savePos := Stream.getPosition s
   p s >>= fun
-    | .ok s x => f y x s >>= fun
-      | .ok s y => efoldlPAux f p y s
-      | .error s e => return .ok (Stream.setPosition s savePos) (y, e, true)
-    | .error s e => return .ok (Stream.setPosition s savePos) (y, e, false)
+    | .ok s' x => f y x s' >>= fun
+      | .ok s'' y => efoldlPAux f p y s''
+      | .error _ e => return .ok s (y, e, true)
+    | .error _ e => return .ok s (y, e, false)
 
 /--
 `foldlP f init p` folds the parser function `f` from left to right using `init` as an intitial
@@ -216,7 +204,7 @@ def efoldlP (f : β → α → ParserT ε σ τ m β) (init : β) (p : ParserT �
   fun s =>
     have : Inhabited β := ⟨init⟩
     have : Inhabited σ := ⟨s⟩
-    have : Inhabited ε := ⟨Error.unexpected (Stream.getPosition s) none⟩
+    have : Inhabited ε := ⟨Error.unexpected s none⟩
     efoldlPAux f p init s
 
 /--
@@ -277,10 +265,9 @@ This parser never fails.
 @[specialize]
 def eoption (p : ParserT ε σ τ m α) : ParserT ε σ τ m (Sum α ε) :=
   fun s =>
-    let savePos := Stream.getPosition s
     p s >>= fun
-    | .ok s x => return .ok s (.inl x)
-    | .error s e => return .ok (Stream.setPosition s savePos) (.inr e)
+    | .ok s' x => return .ok s' (.inl x)
+    | .error _ e => return .ok s (.inr e)
 
 /--
 `optionM p` tries to parse `p` (with backtracking) and returns `x` if `p` returns `x`, returns the
@@ -354,14 +341,13 @@ The default is to only report the error from the last parser.
 -/
 def first (ps : List (ParserT ε σ τ m α)) (combine : ε → ε → ε := fun _ => id) :
   ParserT ε σ τ m α := do
-  go ps (Error.unexpected (← getPosition) none)
+  go ps (Error.unexpected (← getStream) none)
 where
   go : List (ParserT ε σ τ m α) → ε → ParserT ε σ τ m α
     | [], e, s => return .error s e
     | p :: ps, e, s =>
-      let savePos := Stream.getPosition s
       p s >>= fun
-      | .ok s v => return .ok s v
-      | .error s f => go ps (combine e f) (Stream.setPosition s savePos)
+      | .ok s' v => return .ok s' v
+      | .error _ f => go ps (combine e f) s
 
 end Parser
