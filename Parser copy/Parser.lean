@@ -11,11 +11,11 @@ public import Parser.Stream
 public section
 
 /-- Parser result type. -/
-protected inductive Parser.Result.{u} (ε σ Pos α) (s : σ) [Parser.Stream σ τ Pos] : Type u
+protected inductive Parser.Result.{u} (ε σ α : Type u) (s : σ) [Parser.Stream σ τ] : Type u
   /-- Result: success! -/
-  | ok : Pos s → α → Parser.Result ε σ Pos α s
+  | ok : Parser.Stream.Position s → α → Parser.Result ε σ α s
   /-- Result: error! -/
-  | error : Pos s → ε → Parser.Result ε σ Pos α s
+  | error : Parser.Stream.Position s → ε → Parser.Result ε σ α s
   deriving Inhabited, Repr
 
 /--
@@ -23,17 +23,17 @@ protected inductive Parser.Result.{u} (ε σ Pos α) (s : σ) [Parser.Stream σ 
 error type `ε`.
 -/
 @[expose]
-def ParserT (ε σ τ Pos) [Parser.Stream σ τ Pos] [Parser.Error ε σ τ Pos] (m : Type _ → Type _)
-  (α : Type _) : Type _ := (s : σ) → Pos s → m (Parser.Result ε σ Pos α s)
+def ParserT (ε σ τ : Type _) [Parser.Stream σ τ] [Parser.Error ε σ τ] (m : Type _ → Type _)
+  (α : Type _) : Type _ := (s : σ) → Parser.Stream.Position s → m (Parser.Result ε σ α s)
 
 /-- Run the monadic parser `p` on input stream `s`. -/
 @[inline]
-def ParserT.run [Parser.Stream σ τ Pos] [Parser.Error ε σ τ Pos]
-    (p : ParserT ε σ τ Pos m α) (s : σ) (pos : Pos s := Parser.Stream.start s) :
-  m (Parser.Result ε σ Pos α s) := p s pos
+def ParserT.run [Parser.Stream σ τ] [Parser.Error ε σ τ]
+    (p : ParserT ε σ τ m α) (s : σ) (pos : Parser.Stream.Position s := Parser.Stream.start s) :
+  m (Parser.Result ε σ α s) := p s pos
 
-instance (ε σ τ Pos m) [Parser.Stream σ τ Pos] [Parser.Error ε σ τ Pos] [Monad m] :
-  Monad (ParserT ε σ τ Pos m) where
+instance (σ ε τ m) [Parser.Stream σ τ] [Parser.Error ε σ τ] [Monad m] :
+  Monad (ParserT ε σ τ m) where
   pure x _ pos := return .ok pos x
   bind x f s pos := x s pos >>= fun
     | .ok pos a => f a s pos
@@ -58,83 +58,77 @@ instance (ε σ τ Pos m) [Parser.Stream σ τ Pos] [Parser.Error ε σ τ Pos] 
       | .error pos e => return .error pos e
     | .error pos e => return .error pos e
 
-instance (σ ε τ Pos m) [Parser.Stream σ τ Pos] [Parser.Error ε σ τ Pos] [Monad m] :
-  MonadExceptOf ε (ParserT ε σ τ Pos m) where
+instance (σ ε τ m) [Parser.Stream σ τ] [Parser.Error ε σ τ] [Monad m] :
+  MonadExceptOf ε (ParserT ε σ τ m) where
   throw e _ pos := return .error pos e
   tryCatch p c s pos := p s pos >>= fun
     | .ok pos v => return .ok pos v
     | .error pos e => (c e).run s pos
 
-instance {α} (σ ε τ Pos m) [Parser.Stream σ τ Pos] [Parser.Error ε σ τ Pos] [Monad m] :
-  OrElse (ParserT ε σ τ Pos m α) where
+instance {α} (σ ε τ m) [Parser.Stream σ τ] [Parser.Error ε σ τ] [Monad m] :
+  OrElse (ParserT ε σ τ m α) where
   orElse p q s pos :=
     p s pos >>= fun
     | .ok pos' v => return .ok pos' v
     | .error _ _ => q () s pos
 
-instance (σ ε τ Pos m) [Parser.Stream σ τ Pos] [Parser.Error ε σ τ Pos] [Monad m] :
-  MonadLift m (ParserT ε σ τ Pos m) where
+instance (σ ε τ m) [Parser.Stream σ τ] [Parser.Error ε σ τ] [Monad m] :
+  MonadLift m (ParserT ε σ τ m) where
   monadLift x _ pos := (.ok pos ·) <$> x
 
 /--
 `Parser ε σ τ` monad to parse tokens of type `τ` from the stream type `σ` with error type `ε`.
 -/
-abbrev Parser (ε σ τ Pos) [Parser.Stream σ τ Pos] [Parser.Error ε σ τ Pos] := ParserT ε σ τ Pos Id
+abbrev Parser (ε σ τ) [Parser.Stream σ τ] [Parser.Error ε σ τ] := ParserT ε σ τ Id
 
 /-- Run parser `p` on input stream `s`. -/
 @[inline]
-protected def Parser.run {ε σ τ Pos α} [Parser.Stream σ τ Pos] [Parser.Error ε σ τ Pos]
-    (p : Parser ε σ τ Pos α) (s : σ) (pos : Pos s := Stream.start s) : Parser.Result ε σ Pos α s :=
+protected def Parser.run {ε σ τ α} [Parser.Stream σ τ] [Parser.Error ε σ τ] (p : Parser ε σ τ α)
+    (s : σ) (pos : Parser.Stream.Position s := Parser.Stream.start s) : Parser.Result ε σ α s :=
   p s pos
 
 /--
 `TrivialParserT σ τ` monad transformer to parse tokens of type `τ` from the stream `σ` with trivial
 error handling.
 -/
-abbrev TrivialParserT (σ τ Pos) [Parser.Stream σ τ Pos] (m) :=
-  ParserT Parser.Error.Trivial σ τ Pos m
+abbrev TrivialParserT (σ τ) [Parser.Stream σ τ] (m) := ParserT Parser.Error.Trivial σ τ m
 
 /--
 `TrivialParser σ τ` monad to parse tokens of type `τ` from the stream `σ` with trivial error
 handling.
 -/
-abbrev TrivialParser (σ τ Pos) [Parser.Stream σ τ Pos] :=
-  Parser Parser.Error.Trivial σ τ
+abbrev TrivialParser (σ τ) [Parser.Stream σ τ] := Parser Parser.Error.Trivial σ τ
 
 /--
 `BasicParserT σ τ` monad transformer to parse tokens of type `τ` from the stream `σ` with basic
 error handling.
 -/
-abbrev BasicParserT (σ τ Pos) [Parser.Stream σ τ Pos] (m) :=
-  ParserT (Parser.Error.Basic σ τ Pos) σ τ Pos m
+abbrev BasicParserT (σ τ) [Parser.Stream σ τ] (m) := ParserT (Parser.Error.Basic σ τ) σ τ m
 
 /--
 `BasicParser σ τ` monad to parse tokens of type `τ` from the stream `σ` with basic error handling.
 -/
-abbrev BasicParser (σ τ Pos) [Parser.Stream σ τ Pos] :=
-  Parser (Parser.Error.Basic σ τ Pos) σ τ Pos
+abbrev BasicParser (σ τ) [Parser.Stream σ τ] := Parser (Parser.Error.Basic σ τ) σ τ
 
 /--
 `SimpleParserT σ τ` monad transformer to parse tokens of type `τ` from the stream `σ` with simple
 error handling.
 -/
-abbrev SimpleParserT (σ τ Pos) [Parser.Stream σ τ Pos] (m) :=
-  ParserT (Parser.Error.Simple σ τ Pos) σ τ Pos m
+abbrev SimpleParserT (σ τ) [Parser.Stream σ τ] (m) := ParserT (Parser.Error.Simple σ τ) σ τ m
 
 /--
 `SimpleParser σ τ` monad to parse tokens of type `τ` from the stream `σ` with simple error handling.
 -/
-abbrev SimpleParser (σ τ Pos) [Parser.Stream σ τ Pos] := Parser (Parser.Error.Simple σ τ Pos) σ τ
+abbrev SimpleParser (σ τ) [Parser.Stream σ τ] := Parser (Parser.Error.Simple σ τ) σ τ
 
 namespace Parser
-variable {ε σ τ Pos m α β}
-  [Parser.Stream σ τ Pos] [Parser.Error ε σ τ Pos] [Monad m] [MonadExceptOf ε m]
+variable {ε σ α β : Type u} [Parser.Stream σ τ] [Parser.Error ε σ τ] [Monad m] [MonadExceptOf ε m]
 
 /-! # Stream Functions -/
 
 /-- Get parser stream. -/
 @[inline]
-def getStream : ParserT ε σ τ Pos m σ :=
+def getStream : ParserT ε σ τ m σ :=
   fun s p => return .ok p s
 
 /-
@@ -146,14 +140,13 @@ def setStream (s : σ) : ParserT ε σ τ m PUnit :=
 
 /-- Get stream position from parser. -/
 @[inline]
-def getPosition {s : σ} : ParserT ε σ τ Pos m (Pos s) :=
+def getPosition : ParserT ε σ τ m (Stream.Position ) :=
   fun s p => return .ok p p
 
 /-- Set stream position from parser. -/
 @[inline]
-def setPosition (pos : Pos sorry) : ParserT ε σ τ Pos m PUnit := do
-  fun s _ => return .ok pos ()
-  --setStream <| Stream.setPosition (← getStream) pos
+def setPosition (pos : Stream.Position σ) : ParserT ε σ τ m PUnit := do
+  setStream <| Stream.setPosition (← getStream) pos
 
 /-- `withBacktracking p` parses `p` but does not consume any input on error. -/
 @[inline]

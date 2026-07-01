@@ -35,21 +35,17 @@ Implementations should try to make the `Position` type as lightweight as possibl
 and `setPosition` to work properly. Often `Position` is just a scalar type or another simple type.
 This may allow for parsers to use the stream state more efficiently.
 -/
-
-protected class Parser.Stream (σ : Type _) (τ : outParam (Type _))
-    (Pos : outParam (σ → Type _)) where
-  start (s : σ) : Pos s
-  next? (s : σ) : Pos s → Option (τ × Pos s)
-attribute [inherit_doc Parser.Stream] Parser.Stream.start Parser.Stream.next?
-
-instance {σ τ Position} [Parser.Stream σ τ Position] (s : σ) : Inhabited (Position s) where
-  default := Parser.Stream.start s
+protected class Parser.Stream.{u_1} {σ : Type _} (s : σ) (τ : outParam (Type _)) where
+  Position : Type u_1
+  next? : Position → Option (τ × Position)
+attribute [reducible, inherit_doc Parser.Stream] Parser.Stream.Position
+attribute [inherit_doc Parser.Stream] Parser.Stream.next?
 
 namespace Parser.Stream
 
 /-- Stream segment type. -/
 @[expose]
-def Segment {σ τ Pos} [Parser.Stream σ τ Pos] (s : σ) := Pos s × Pos s
+def Segment (σ) (s : σ) [Parser.Stream s τ] := Stream.Position s × Stream.Position s
 
 /-- Default wrapper to make a `Parser.Stream` from a plain `Stream`.
 
@@ -57,47 +53,57 @@ This wrapper uses the entire stream state as position information; this is not e
 prefer tailored `Parser.Stream` instances to this default.
 -/
 @[expose]
-def mkDefault (σ τ) [Std.Stream σ τ] : σ → Type _ := fun _ ↦ σ
+def mkDefault (σ τ) [Std.Stream σ τ] := σ
 
 @[reducible]
-instance (σ τ) [self : Std.Stream σ τ] : Parser.Stream σ τ (mkDefault σ τ) where
-  start s := s
-  next? _ := self.next?
+instance (σ τ) [self : Std.Stream σ τ] : Parser.Stream (mkDefault σ τ) τ where
+  Position := σ
+  next? := self.next?
 
+/- redundant
 @[reducible]
-instance : Parser.Stream String Char String.Pos where
-  start s := s.startPos
-  next? _ p :=
+instance {s : String} : Parser.Stream s Char where
+  Position := s.Pos
+  next? p :=
    match h : p.next? with
     | some p' => (p.get (String.Pos.ne_endPos_of_next?_eq_some h), p')
     | none => none
+-/
 
 @[reducible]
-instance : Parser.Stream String.Slice Char String.Slice.Pos where
-  start s := s.startPos
-  next? _ p :=
+instance {s : String.Slice} : Parser.Stream s Char where
+  Position := s.Pos
+  next? p :=
+   match h : p.next? with
+    | some p' => (p.get (String.Slice.Pos.ne_endPos_of_next?_eq_some h), p')
+    | none => none
+
+@[reducible]
+instance {s : String.Slice} : Parser.Stream s Char where
+  Position := s.Pos
+  next? p :=
    match h : p.next? with
     | some p' => (p.get (String.Slice.Pos.ne_endPos_of_next?_eq_some h), p')
     | none => none
 
 -- Substring.Raw is a legacy function, so maybe this should be removed.
 @[reducible]
-instance : Parser.Stream Substring.Raw Char (fun _ ↦String.Pos.Raw) where
-  start s := s.startPos
-  next? s p :=  if s.startPos < s.stopPos then
+instance {s : Substring.Raw} : Parser.Stream s Char where
+  Position := String.Pos.Raw
+  next? p :=  if s.startPos < s.stopPos then
       some (s.startPos.get s.str, p.next s.str)
     else
       none
 
 @[reducible]
-instance (τ) : Parser.Stream (Subarray τ) τ (fun _ ↦ Nat) where
-  start s := s.start
-  next? s p := s[p]? >>= (· , p  + 1)
+instance (τ) {s : Subarray τ} : Parser.Stream s τ where
+  Position := Nat
+  next? p := s[p]? >>= (· , p  + 1)
 
 @[reducible]
-instance : Parser.Stream ByteSlice UInt8 (fun _ ↦ Nat) where
-  start s := s.start
-  next? s p := s[p]? >>= (· , p  + 1)
+instance {s : ByteSlice} : Parser.Stream s UInt8 where
+  Position := Nat
+  next? p := s[p]? >>= (· , p  + 1)
 
 /-
 /-- `OfList` is a view of a list stream that keeps track of consumed tokens. -/
@@ -139,8 +145,11 @@ instance (τ) : Parser.Stream (OfList τ) τ where
 -/
 
 @[reducible]
-instance (τ) : Parser.Stream (List τ) τ (fun _ ↦ List τ) where
-  start s := s
-  next? _ p := p.next?
+instance (τ) (s : List τ) : Parser.Stream s τ where
+  Position := List τ
+  next? p :=
+    match p with
+    | x :: rest => some (x, rest)
+    | _ => none
 
 end Parser.Stream

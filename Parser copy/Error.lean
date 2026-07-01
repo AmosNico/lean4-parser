@@ -39,10 +39,9 @@ errors:
 This class can be extended to provide additional error reporting and processing functonality, but
 only these two mechanisms are used within the library.
 -/
-protected class Parser.Error (ε σ : Type _) (τ : outParam (Type _)) (Pos : outParam _)
-    [Parser.Stream σ τ Pos] where
-  unexpected (s : σ) : Pos s → Option τ → ε
-  addMessage (s : σ) : ε → Pos s → String → ε
+protected class Parser.Error (ε σ : Type _) (τ : outParam (Type _)) [Parser.Stream σ τ] where
+  unexpected (s : σ) : Stream.Position s → Option τ → ε
+  addMessage (s : σ) : ε → Stream.Position s → String → ε
 attribute [inherit_doc Parser.Error] Parser.Error.unexpected Parser.Error.addMessage
 
 namespace Parser.Error
@@ -54,7 +53,7 @@ or where parsing errors are intended to be handled by other means.
 -/
 abbrev Trivial := Unit
 
-instance (σ τ Pos) [Parser.Stream σ τ Pos] : Parser.Error Trivial σ τ Pos where
+instance (σ τ) [Parser.Stream σ τ] : Parser.Error Trivial σ τ where
   unexpected _ _ _ := ()
   addMessage _ e _ _ := e
 
@@ -64,14 +63,14 @@ This error type records the position and, optionally, the offending token where 
 occurred; any additional information is discarded. This is useful for parsers where the cause of
 parsing errors is predictable and only the position of the error is needed for processing.
 -/
-abbrev Basic (σ τ Pos) [Parser.Stream σ τ Pos] := (s : σ) × Pos s × Option τ
+abbrev Basic (σ τ) [Parser.Stream σ τ] := (s : σ) × Parser.Stream.Position s × Option τ
 
-instance (σ τ Pos) [Parser.Stream σ τ Pos] : Parser.Error (Basic σ τ Pos) σ τ Pos where
+instance (σ τ) [Parser.Stream σ τ] : Parser.Error (Basic σ τ) σ τ where
   unexpected s p t := ⟨s, p, t⟩
   addMessage _ e _ _ := e
 
-instance (σ τ Pos) [Repr τ] [Parser.Stream σ τ Pos] [∀ s : σ, Repr (Pos s)] :
-  ToString (Basic σ τ Pos) where
+instance (σ τ) [Repr τ] [Parser.Stream σ τ] [∀ s : σ, Repr (Parser.Stream.Position s)] :
+  ToString (Basic σ τ) where
   toString
     | ⟨_, pos, some tok⟩ => s!"unexpected input {repr tok} at {repr pos}"
     | ⟨_, pos, none⟩ => s!"unexpected input at {repr pos}"
@@ -81,15 +80,15 @@ instance (σ τ Pos) [Repr τ] [Parser.Stream σ τ Pos] [∀ s : σ, Repr (Pos 
 This error type simply records all the error information provided, without additional processing.
 Users are expected to provide any necessary post-processing. This is useful for parser development.
 -/
-inductive Simple (σ τ Pos) [Parser.Stream σ τ Pos]
+inductive Simple (σ τ) [Parser.Stream σ τ]
   /-- Unexpected input at position -/
-  | unexpected (s : σ) : Pos s → Option τ → Simple σ τ Pos
+  | unexpected (s : σ) : Stream.Position s → Option τ → Simple σ τ
   /-- Add error message at position -/
-  | addMessage (s : σ) : Simple σ τ Pos → Pos s → String → Simple σ τ Pos
+  | addMessage (s : σ) : Simple σ τ → Stream.Position s → String → Simple σ τ
 
 -- The derive handler for `Repr` fails, this is a workaround.
-protected def Simple.reprPrec {σ τ Pos} [Parser.Stream σ τ Pos] [Repr τ]
-    [∀ s : σ, Repr (Pos s)] : Simple σ τ Pos → Nat → Std.Format
+protected def Simple.reprPrec {σ τ} [Parser.Stream σ τ] [Repr τ]
+    [∀ s : σ, Repr (Stream.Position s)] : Simple σ τ → Nat → Std.Format
   | unexpected _ pos a, prec =>
     Repr.addAppParen
       (Std.Format.group
@@ -113,21 +112,21 @@ protected def Simple.reprPrec {σ τ Pos} [Parser.Stream σ τ Pos] [Repr τ]
           reprArg msg)))
       prec
 
-instance (σ τ Pos) [Parser.Stream σ τ Pos] [Repr τ] [∀ s : σ, Repr (Pos s)] :
-    Repr (Simple σ τ Pos) where
+instance (σ τ) [Parser.Stream σ τ] [Repr τ] [∀ s : σ, Repr (Stream.Position s)] :
+    Repr (Simple σ τ) where
   reprPrec := Simple.reprPrec
 
-protected def Simple.toString {σ τ Pos} [Repr τ] [Parser.Stream σ τ Pos]
-    [∀ s : σ, Repr (Pos s)] : Simple σ τ Pos → String
+protected def Simple.toString {σ τ} [Repr τ] [Parser.Stream σ τ]
+    [∀ s : σ, Repr (Parser.Stream.Position s)] : Simple σ τ → String
   | unexpected _ pos (some tok) => s!"unexpected token {repr tok} at {repr pos}"
   | unexpected _ pos none => s!"unexpected token at {repr pos}"
   | addMessage _ e pos msg => Simple.toString e ++ s!"; {msg} at {repr pos}"
 
-instance (σ τ Pos) [Repr τ] [Parser.Stream σ τ Pos] [∀ s : σ, Repr (Pos s)] :
-  ToString (Simple σ τ Pos) where
+instance (σ τ) [Repr τ] [Parser.Stream σ τ] [∀ s : σ, Repr (Parser.Stream.Position s)] :
+  ToString (Simple σ τ) where
   toString := Simple.toString
 
-instance (σ τ Pos) [Parser.Stream σ τ Pos] : Parser.Error (Simple σ τ Pos) σ τ Pos where
+instance (σ τ) [Parser.Stream σ τ] : Parser.Error (Simple σ τ) σ τ where
   unexpected := Simple.unexpected
   addMessage := Simple.addMessage
 
