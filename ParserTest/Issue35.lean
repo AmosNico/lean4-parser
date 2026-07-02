@@ -5,9 +5,9 @@ open Parser
 namespace Issue35
 
 def test : Bool :=
-  match Parser.run (Char.string "abc" : SimpleParser String.Slice Char String.Slice) "abc" with
-  | .ok s r => s.isEmpty && r.copy == "abc"
-  | .error _ _ => false
+  match Parser.run (Char.string "abc" : SimpleParser String.Slice Char String) "abc" with
+  | .ok s pos r => pos == s.rawEndPos && r == "abc"
+  | .error _ _ _ => false
 
 #guard test
 

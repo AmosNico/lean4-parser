@@ -70,7 +70,7 @@ instance (σ τ) [Parser.Stream σ τ] : Parser.Error (Basic σ τ) σ τ where
   unexpected p t := (p, t)
   addMessage e _ _ := e
 
-instance (σ τ) [Repr τ] [Parser.Stream σ τ] [Repr (Parser.Stream.Position σ)] :
+instance (σ τ) [Repr τ] [Parser.Stream σ τ] [Repr (Stream.Position σ)] :
   ToString (Basic σ τ) where
   toString
     | (pos, some tok) => s!"unexpected input {repr tok} at {repr pos}"
@@ -88,8 +88,8 @@ inductive Simple (σ τ) [Parser.Stream σ τ]
   | addMessage : Simple σ τ → Stream.Position σ → String → Simple σ τ
 
 -- The derive handler for `Repr` fails, this is a workaround.
-protected def Simple.reprPrec {σ τ} [Parser.Stream σ τ] [Repr τ] [Repr (Stream.Position σ)] :
-  Simple σ τ → Nat → Std.Format
+protected def Simple.reprPrec {σ τ} [Parser.Stream σ τ] [Repr τ]
+    [Repr (Stream.Position σ)] : Simple σ τ → Nat → Std.Format
   | unexpected pos a, prec =>
     Repr.addAppParen
       (Std.Format.group
