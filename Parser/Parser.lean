@@ -11,12 +11,12 @@ public import Parser.Stream
 public section
 
 /-- Parser result type. -/
-protected inductive Parser.Result.{u} (ε σ α : Type u) : Type u
+protected inductive Parser.Result {τ} (ε σ α : Type u) [Parser.Stream σ τ] : Type u
   /-- Result: success! -/
-  | ok : σ → α → Parser.Result ε σ α
+  | ok : σ → Parser.Stream.Position σ → α → Parser.Result ε σ α
   /-- Result: error! -/
-  | error : σ → ε → Parser.Result ε σ α
-  deriving Inhabited, Repr
+  | error : σ → Parser.Stream.Position σ → ε → Parser.Result ε σ α
+deriving Inhabited -- TODO : manually implement Repr
 
 /--
 `ParserT ε σ τ` is a monad transformer to parse tokens of type `τ` from the stream type `σ` with
@@ -24,56 +24,55 @@ error type `ε`.
 -/
 @[expose]
 def ParserT (ε σ τ : Type _) [Parser.Stream σ τ] [Parser.Error ε σ τ] (m : Type _ → Type _)
-  (α : Type _) : Type _ := σ → m (Parser.Result ε σ α)
+  (α : Type _) : Type _ := σ → Parser.Stream.Position σ → m (Parser.Result ε σ α)
 
 /-- Run the monadic parser `p` on input stream `s`. -/
 @[inline]
-def ParserT.run [Parser.Stream σ τ] [Parser.Error ε σ τ] (p : ParserT ε σ τ m α) (s : σ) :
-  m (Parser.Result ε σ α) := p s
+def ParserT.run [stream : Parser.Stream σ τ] [Parser.Error ε σ τ]
+    (p : ParserT ε σ τ m α) (s : σ) (pos : optParam stream.Position (stream.start s)):
+  m (Parser.Result ε σ α) := p s pos
 
 instance (σ ε τ m) [Parser.Stream σ τ] [Parser.Error ε σ τ] [Monad m] :
   Monad (ParserT ε σ τ m) where
-  pure x s := return .ok s x
-  bind x f s := x s >>= fun
-    | .ok s a => f a s
-    | .error s e => return .error s e
-  map f x s := x s >>= fun
-    | .ok s a => return .ok s (f a)
-    | .error s e => return .error s e
-  seq f x s := f s >>= fun
-    | .ok s f => x () s >>= fun
-      | .ok s x => return .ok s (f x)
-      | .error s e => return .error s e
-    | .error s e => return .error s e
-  seqLeft x y s := x s >>= fun
-    | .ok s x => y () s >>= fun
-      | .ok s _ => return .ok s x
-      | .error s e => return .error s e
-    | .error s e => return .error s e
-  seqRight x y s := x s >>= fun
-    | .ok s _ => y () s >>= fun
-      | .ok s y => return .ok s y
-      | .error s e => return .error s e
-    | .error s e => return .error s e
+  pure x s pos := return .ok s pos x
+  bind x f s pos := x s pos >>= fun
+    | .ok s pos a => f a s pos
+    | .error s pos e => return .error s pos e
+  map f x s pos := x s pos >>= fun
+    | .ok s pos a => return .ok s pos (f a)
+    | .error s pos e => return .error s pos e
+  seq f x s pos := f s pos >>= fun
+    | .ok s pos f => x () s pos >>= fun
+      | .ok s pos x => return .ok s pos (f x)
+      | .error s pos e => return .error s pos e
+    | .error s pos e => return .error s pos e
+  seqLeft x y s pos := x s pos >>= fun
+    | .ok s pos x => y () s pos >>= fun
+      | .ok s pos _ => return .ok s pos x
+      | .error s pos e => return .error s pos e
+    | .error s pos e => return .error s pos e
+  seqRight x y s pos := x s pos >>= fun
+    | .ok s pos _ => y () s pos >>= fun
+      | .ok s pos y => return .ok s pos y
+      | .error s pos e => return .error s pos e
+    | .error s pos e => return .error s pos e
 
 instance (σ ε τ m) [Parser.Stream σ τ] [Parser.Error ε σ τ] [Monad m] :
   MonadExceptOf ε (ParserT ε σ τ m) where
-  throw e s := return .error s e
-  tryCatch p c s := p s >>= fun
-    | .ok s v => return .ok s v
-    | .error s e => (c e).run s
+  throw e s pos := return .error s pos e
+  tryCatch p c s pos := p s pos >>= fun
+    | .ok s pos v => return .ok s pos v
+    | .error s pos e => (c e).run s pos
 
 instance (σ ε τ m) [Parser.Stream σ τ] [Parser.Error ε σ τ] [Monad m] :
   OrElse (ParserT ε σ τ m α) where
-  orElse p q s :=
-    let savePos := Parser.Stream.getPosition s
-    p s >>= fun
-    | .ok s v => return .ok s v
-    | .error s _ => q () (Parser.Stream.setPosition s savePos)
-
+  orElse p q s pos :=
+    p s pos >>= fun
+    | .ok s pos v => return .ok s pos v
+    | .error s _ _ => q () s pos
 instance (σ ε τ m) [Parser.Stream σ τ] [Parser.Error ε σ τ] [Monad m] :
   MonadLift m (ParserT ε σ τ m) where
-  monadLift x s := (.ok s ·) <$> x
+  monadLift x s pos := (.ok s pos ·) <$> x
 
 /--
 `Parser ε σ τ` monad to parse tokens of type `τ` from the stream type `σ` with error type `ε`.
@@ -83,7 +82,7 @@ abbrev Parser (ε σ τ) [Parser.Stream σ τ] [Parser.Error ε σ τ] := Parser
 /-- Run parser `p` on input stream `s`. -/
 @[inline]
 protected def Parser.run {ε σ τ α} [Parser.Stream σ τ] [Parser.Error ε σ τ] (p : Parser ε σ τ α)
-  (s : σ) : Parser.Result ε σ α := p s
+  (s : σ) : Parser.Result ε σ α := p s (Stream.start s)
 
 /--
 `TrivialParserT σ τ` monad transformer to parse tokens of type `τ` from the stream `σ` with trivial
@@ -127,22 +126,17 @@ variable {ε σ α β : Type u} [Parser.Stream σ τ] [Parser.Error ε σ τ] [M
 /-- Get parser stream. -/
 @[inline]
 def getStream : ParserT ε σ τ m σ :=
-  fun s => return .ok s s
-
-/-- Set parser stream. -/
-@[inline]
-def setStream (s : σ) : ParserT ε σ τ m PUnit :=
-  fun _ => return .ok s PUnit.unit
+  fun s pos => return .ok s pos s
 
 /-- Get stream position from parser. -/
 @[inline]
 def getPosition : ParserT ε σ τ m (Stream.Position σ) :=
-  Stream.getPosition <$> getStream
+  fun s pos => return .ok s pos pos
 
 /-- Set stream position from parser. -/
 @[inline]
 def setPosition (pos : Stream.Position σ) : ParserT ε σ τ m PUnit := do
-  setStream <| Stream.setPosition (← getStream) pos
+  fun s _ => return .ok s pos PUnit.unit
 
 /-- `withBacktracking p` parses `p` but does not consume any input on error. -/
 @[inline]
@@ -191,14 +185,13 @@ def withErrorMessage (msg : String) (p : ParserT ε σ τ m α) : ParserT ε σ 
 
 @[specialize]
 private partial def efoldlPAux [Inhabited ε] [Inhabited σ] [Inhabited β]
-  (f : β → α → ParserT ε σ τ m β) (p : ParserT ε σ τ m α) (y : β) (s : σ) :
-  m (Parser.Result ε σ (β × ε × Bool)) :=
-  let savePos := Stream.getPosition s
-  p s >>= fun
-    | .ok s x => f y x s >>= fun
-      | .ok s y => efoldlPAux f p y s
-      | .error s e => return .ok (Stream.setPosition s savePos) (y, e, true)
-    | .error s e => return .ok (Stream.setPosition s savePos) (y, e, false)
+    (f : β → α → ParserT ε σ τ m β) (p : ParserT ε σ τ m α) (y : β) (s : σ)
+    (pos : Stream.Position σ ) : m (Parser.Result ε σ (β × ε × Bool)) :=
+  p s pos >>= fun
+    | .ok s pos' x => f y x s pos' >>= fun
+      | .ok s pos' y => efoldlPAux f p y s pos'
+      | .error s _ e => return .ok s pos (y, e, true)
+    | .error s _ e => return .ok s pos (y, e, false)
 
 /--
 `foldlP f init p` folds the parser function `f` from left to right using `init` as an intitial
@@ -216,7 +209,7 @@ def efoldlP (f : β → α → ParserT ε σ τ m β) (init : β) (p : ParserT �
   fun s =>
     have : Inhabited β := ⟨init⟩
     have : Inhabited σ := ⟨s⟩
-    have : Inhabited ε := ⟨Error.unexpected (Stream.getPosition s) none⟩
+    have : Inhabited ε := ⟨Error.unexpected (Stream.start s) none⟩
     efoldlPAux f p init s
 
 /--
@@ -276,11 +269,10 @@ This parser never fails.
 -/
 @[specialize]
 def eoption (p : ParserT ε σ τ m α) : ParserT ε σ τ m (Sum α ε) :=
-  fun s =>
-    let savePos := Stream.getPosition s
-    p s >>= fun
-    | .ok s x => return .ok s (.inl x)
-    | .error s e => return .ok (Stream.setPosition s savePos) (.inr e)
+  fun s pos =>
+    p s pos >>= fun
+    | .ok s pos x => return .ok s pos (.inl x)
+    | .error s _ e => return .ok s pos (.inr e)
 
 /--
 `optionM p` tries to parse `p` (with backtracking) and returns `x` if `p` returns `x`, returns the
@@ -357,11 +349,9 @@ def first (ps : List (ParserT ε σ τ m α)) (combine : ε → ε → ε := fun
   go ps (Error.unexpected (← getPosition) none)
 where
   go : List (ParserT ε σ τ m α) → ε → ParserT ε σ τ m α
-    | [], e, s => return .error s e
-    | p :: ps, e, s =>
-      let savePos := Stream.getPosition s
-      p s >>= fun
-      | .ok s v => return .ok s v
-      | .error s f => go ps (combine e f) (Stream.setPosition s savePos)
-
+    | [], e, s, pos => return .error s pos e
+    | p :: ps, e, s, pos =>
+      p s pos >>= fun
+      | .ok s pos v => return .ok s pos v
+      | .error s _ f => go ps (combine e f) s pos
 end Parser
