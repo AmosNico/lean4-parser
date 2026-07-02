@@ -12,7 +12,7 @@ public section
 namespace Parser
 
 /-- Type of regular expressions -/
-inductive RegEx : Type _ → Type _
+inductive RegEx (α : Type _)
   /-- Character set -/
   | set : (α → Bool) → RegEx α
   /-- Alternation -/
@@ -68,10 +68,11 @@ def repManyN (n : Nat) (e : RegEx α) :=
   | n+1 => cat e (repManyN n e)
 
 section
-variable {ε σ α β} [Parser.Stream σ α] [Parser.Error ε σ α] {m} [Monad m]
+variable {ε σ α β} [Parser.Stream σ] [Parser.Error ε σ] {m} [Monad m]
 
 /-- Fold over a regex match from the right -/
-protected partial def foldr (f : α → β → β) : RegEx α → ParserT ε σ α m β → ParserT ε σ α m β
+protected partial def foldr (f : (Stream.Token σ) → β → β) :
+    RegEx (Stream.Token σ) → ParserT ε σ m β → ParserT ε σ m β
   | .set s, k => tokenFilter s >>= fun x => f x <$> k
   | .alt e₁ e₂, k => RegEx.foldr f e₁ k <|> RegEx.foldr f e₂ k
   | .cat e₁ e₂, k => RegEx.foldr f e₁ (RegEx.foldr f e₂ k)
@@ -81,22 +82,23 @@ protected partial def foldr (f : α → β → β) : RegEx α → ParserT ε σ 
   | .group e, k => RegEx.foldr f e k
 
 /-- `take re` parses tokens matching regex `re` returning the list of tokens, otherwise fails -/
-protected def take (re : RegEx α) : ParserT ε σ α m (List α) :=
+protected def take (re : RegEx (Stream.Token σ)) : ParserT ε σ m (List (Stream.Token σ)) :=
   re.foldr (.::.) (pure [])
 
 /-- `drop re` parses tokens matching regex `re`, otherwise fails -/
-protected def drop (re : RegEx α) : ParserT ε σ α m Unit :=
+protected def drop (re : RegEx (Stream.Token σ)) : ParserT ε σ m Unit :=
   re.foldr (fun _ => id) (pure ())
 
 /-- `count re` parses tokens matching regex `re` returning the number of tokens, otherwise fails -/
-protected def count (re : RegEx α) : ParserT ε σ α m Nat :=
+protected def count (re : RegEx (Stream.Token σ)) : ParserT ε σ m Nat :=
   re.foldr (fun _ => Nat.succ) (pure 0)
 
 /-- Parses tokens matching regex `re` returning all the matching group segments, otherwise fails -/
-protected partial def «match» (re : RegEx α) : ParserT ε σ α m (Array (Option (Stream.Segment σ))) := do
+protected partial def «match» (re : RegEx (Stream.Token σ)) :
+    ParserT ε σ m (Array (Option (Stream.Segment σ))) := do
   loop re 0 (Array.replicate re.depth none)
 where
-  loop : RegEx α → Nat → Array (Option (Stream.Segment σ)) → ParserT ε σ α m (Array (Option (Stream.Segment σ)))
+  loop : RegEx (Stream.Token σ) → Nat → Array (Option (Stream.Segment σ)) → ParserT ε σ m (Array (Option (Stream.Segment σ)))
     | .set s, _, ms => tokenFilter s *> return ms
     | .alt e₁ e₂, lvl, ms => loop e₁ lvl ms <|> loop e₂ (lvl + e₁.depth) ms
     | .cat e₁ e₂, lvl, ms => loop e₁ lvl ms >>= loop e₂ (lvl + e₁.depth)

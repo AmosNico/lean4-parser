@@ -10,11 +10,11 @@ public import Parser.RegEx.Basic
 public section
 
 namespace Parser.Char
-variable {ε σ m} [Parser.Stream σ Char] [Parser.Error ε σ Char] [Monad m]
+variable {ε σ m} [Parser.Stream σ] [Parser.Error ε σ] [BEq (Stream.Token σ)] [Monad m]
 
 /-- `char tk` accepts and returns character `tk`, otherwise fails -/
 @[inline]
-def char (tk : Char) : ParserT ε σ Char m Char :=
+def char (tk : Char) : ParserT ε σ m Char :=
   withErrorMessage s!"expected {repr tk}" <| token tk
 
 /-- `chars tks` accepts and returns string `tks`, otherwise fails -/

@@ -29,21 +29,22 @@ is just a scalar type or another simple type.
 This may allow for parsers to use the stream state more efficiently.
 -/
 
-protected class Parser.Stream (σ : Type _) (τ : outParam (Type _)) where
-  Position : Type u
+protected class Parser.Stream (σ : Type u_1) where
+  Token : Type u_2
+  Position : Type u_3
   start : σ → Position
-  next? : σ →  Position → Option (τ × Position)
-attribute [reducible, inherit_doc Parser.Stream] Parser.Stream.Position
+  next? : σ →  Position → Option (Token × Position)
+attribute [reducible, inherit_doc Parser.Stream] Parser.Stream.Position Parser.Stream.Token
 attribute [inherit_doc Parser.Stream] Parser.Stream.start Parser.Stream.next?
 
-instance {σ τ} [self : Parser.Stream σ τ] [Inhabited σ] : Inhabited self.Position where
+instance {σ} [self : Parser.Stream σ] [Inhabited σ] : Inhabited self.Position where
   default := Parser.Stream.start default
 
 namespace Parser.Stream
 
 /-- Stream segment type. -/
 @[expose]
-def Segment σ {τ} [self : Parser.Stream σ τ] := self.Position × self.Position
+def Segment σ [self : Parser.Stream σ] := self.Position × self.Position
 
 /-- Default wrapper to make a `Parser.Stream` from a plain `Stream`.
 
@@ -54,14 +55,16 @@ prefer tailored `Parser.Stream` instances to this default.
 def mkDefault (σ τ) [Std.Stream σ τ] := σ
 
 @[reducible]
-instance (σ τ) [self : Std.Stream σ τ] : Parser.Stream (mkDefault σ τ) τ where
+instance (σ τ) [self : Std.Stream σ τ] : Parser.Stream (mkDefault σ τ) where
   Position := σ
+  Token := τ
   start s := s
   next? _ := self.next?
 
 @[reducible]
-instance : Parser.Stream String Char where
+instance : Parser.Stream String where
   Position := String.Pos.Raw
+  Token := Char
   start s := s.rawStartPos
   next? s p :=
     if h : p.IsValid s ∧ p < s.rawEndPos then
@@ -71,8 +74,9 @@ instance : Parser.Stream String Char where
 
 
 @[reducible]
-instance : Parser.Stream String.Slice Char where
+instance : Parser.Stream String.Slice where
   Position := String.Pos.Raw
+  Token := Char
   start s := s.startPos.offset
   next? s p :=
     if h : p.IsValidForSlice s ∧ p < s.rawEndPos then
@@ -83,8 +87,9 @@ instance : Parser.Stream String.Slice Char where
 
 -- Substring.Raw is a legacy function, so maybe this should be removed.
 @[reducible]
-instance : Parser.Stream Substring.Raw Char where
+instance : Parser.Stream Substring.Raw where
   Position := String.Pos.Raw
+  Token := Char
   start s := s.startPos
   next? s p :=  if p < s.stopPos then
       some (s.startPos.get s.str, p.next s.str)
@@ -92,20 +97,23 @@ instance : Parser.Stream Substring.Raw Char where
       none
 
 @[reducible]
-instance (τ) : Parser.Stream (Subarray τ) τ where
+instance (τ) : Parser.Stream (Subarray τ) where
   Position := Nat
+  Token := τ
   start s := s.start
   next? s p := s[p]? >>= (· , p  + 1)
 
 @[reducible]
-instance : Parser.Stream ByteSlice UInt8 where
+instance : Parser.Stream ByteSlice where
   Position := Nat
+  Token := UInt8
   start s := s.start
   next? s p := s[p]? >>= (· , p  + 1)
 
 @[reducible]
-instance (τ) : Parser.Stream (List τ) τ where
+instance (τ) : Parser.Stream (List τ) where
   Position := List τ
+  Token := τ
   start s := s
   next? _ p := p.next?
 
