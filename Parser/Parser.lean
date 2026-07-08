@@ -364,4 +364,87 @@ where
       | .ok s v => return .ok s v
       | .error s f => go ps (combine e f) (Stream.setPosition s savePos)
 
+/--
+For each tuple `(p, p')` in `ps`, try the parser `p` in order (with backtracking) until one
+succeeds:
+
+- Once a parser `p` succeeds, run the corresponding parser `p'` and return its result along with the
+  list of errors from all previous parsers.
+- If none succeed then `none` is returned along with the list of errors of all parsers.
+
+This parser never fails.
+-/
+def ecases {β α} (ps : List (ParserT ε σ τ m β × ParserT ε σ τ m α)) :
+    ParserT ε σ τ m (Option (ε ⊕ α) × List ε) :=
+  go ps []
+where
+  go : List (ParserT ε σ τ m β × ParserT ε σ τ m α) → List ε →
+      ParserT ε σ τ m (Option (ε ⊕ α) × List ε)
+  | [], es => return (none, es.reverse)
+  | (p, p') :: ps, es => do
+    match ← eoption p with
+    | .inl _ => fun s => p' s >>= fun
+      | .ok s x => return .ok s (some (.inr x), es.reverse)
+      | .error s e => return .ok s (some (.inl e), es.reverse)
+    | .inr e => go ps (e :: es)
+
+/--
+For each tuple `(p, p')` in `ps`, try the parser `p` in order (with backtracking) until one
+succeeds. Then run the corresponding parser `p'` and return its result.
+-/
+def cases {α β} : (ps : List (ParserT ε σ τ m β × ParserT ε σ τ m α)) → ParserT ε σ τ m α
+  | [] => throwUnexpected
+  | (p, p') :: ps => do
+    match ← eoption p with
+    | .inl _ => return ← p'
+    | .inr _ => cases ps
+
+/--
+For each tuple `(β, p, p')` in `ps`, try the parser `p` in order (with backtracking) until one
+succeeds:
+
+- Once a parser `p` succeeds with result `b`, run the corresponding parser `p' b` and return its
+  result along with the list of errors from all previous parsers.
+- If none succeed then `none` is returned along with the list of errors of all parsers.
+
+This parser never fails.
+-/
+def edcases {α} (ps : List ((β : Type _) × ParserT ε σ τ m β × (β → ParserT ε σ τ m α))) :
+    ParserT ε σ τ m (Option (ε ⊕ α) × List ε) :=
+  go ps []
+where
+  go : List ((β : Type _) × ParserT ε σ τ m β × (β → ParserT ε σ τ m α)) → List ε →
+      ParserT ε σ τ m (Option (ε ⊕ α) × List ε)
+  | [], es => return (none, es.reverse)
+  | ⟨_, p, p'⟩ :: ps, es => do
+    match ← eoption p with
+    | .inl b => fun s => p' b s >>= fun
+      | .ok s x => return .ok s (some (.inr x), es.reverse)
+      | .error s e => return .ok s (some (.inl e), es.reverse)
+    | .inr e => go ps (e :: es)
+
+/--
+For each tuple `(p, p')` in given list, try the parser `p` in order (with backtracking) until one
+succeeds with result `b`. Then run the corresponding parser `p' b` and return its result.
+-/
+def dcases {α} : List ((β : Type _) × ParserT ε σ τ m β × (β → ParserT ε σ τ m α)) → ParserT ε σ τ m α
+  | [] => throwUnexpected
+  | ⟨_, p, p'⟩ :: ps => do
+    match ← eoption p with
+    | .inl a => return ← p' a
+    | .inr _ => dcases ps
+
+/- Alternative implemtnations using first:
+def cases1 {α β} (ps : List (Parser ε σ τ α × Parser ε σ τ β)) :
+    Parser ε σ τ β := do
+  ← Parser.first (ps.map fun (p, p') ↦ p *> return p')
+
+def dcases1 {α β} (ps : List (Parser ε σ τ α × (α → Parser ε σ τ β))) :
+    Parser ε σ τ β := do
+  ← Parser.first (ps.map fun (p, p') ↦ p' <$> p)
+
+def dcases2 {α} (ps : List ((β : Type _) × Parser ε σ τ β × (β → Parser ε σ τ α))) :
+    Parser ε σ τ α := do
+  ← Parser.first (ps.map fun ⟨_, p, p'⟩ ↦ p' <$> p)
+-/
 end Parser
