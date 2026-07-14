@@ -5,12 +5,12 @@ allowImportAll = true
 [[require]]
 name = "batteries"
 git = "https://github.com/leanprover-community/batteries"
-rev = "main"
+rev = "v4.32.0"
 
 [[require]]
 name = "UnicodeBasic"
 git = "https://github.com/fgdorais/lean4-unicode-basic"
-rev = "main"
+rev = "947120c17904da8fc89abe3616d57e1c3e13aa9c"
 
 [[lean_lib]]
 name = "Parser"
