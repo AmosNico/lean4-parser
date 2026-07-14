@@ -6,12 +6,12 @@ testDriver = "ParserTest"
 [[require]]
 name = "batteries"
 git = "https://github.com/leanprover-community/batteries"
-rev = "main"
+rev = "v4.35.0"
 
 [[require]]
 name = "UnicodeBasic"
 git = "https://github.com/fgdorais/lean4-unicode-basic"
-rev = "main"
+rev = "6e48acac3a91665fcdc4a20d50b7ce6b7b41711f"
 
 [[lean_lib]]
 name = "Parser"
