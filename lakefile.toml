@@ -17,3 +17,6 @@ name = "Parser"
 
 [[lean_exe]]
 name = "test"
+
+[[lean_exe]]
+name = "performance"
